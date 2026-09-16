@@ -1,0 +1,19 @@
+# iOS (project is generated from ios/project.yml by xcodegen)
+ios/build/
+ios/DerivedData/
+ios/*.xcodeproj
+ios/.swiftpm/
+
+# Android
+android/.gradle/
+android/build/
+android/*/build/
+android/local.properties
+android/.idea/
+android/*.iml
+android/.kotlin/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/

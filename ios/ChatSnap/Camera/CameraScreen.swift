@@ -1,0 +1,141 @@
+import AVFoundation
+import SwiftUI
+import UIKit
+
+struct CameraScreen: View {
+    @EnvironmentObject private var camera: CameraController
+    @EnvironmentObject private var store: ChatStore
+    @EnvironmentObject private var session: SessionStore
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            Group {
+                if camera.usesSimulatorFeed {
+                    SimulatorFeed()
+                } else {
+                    CameraPreview(session: camera.session)
+                }
+            }
+            .ignoresSafeArea()
+            .opacity(camera.status == .running ? 1 : 0)
+
+            switch camera.status {
+            case .denied:
+                PermissionPrompt()
+            case .failed(let message):
+                MessagePlate(text: message)
+            case .starting, .running:
+                controls
+            }
+        }
+        .fullScreenCover(item: $camera.snap) { snap in
+            SnapReviewScreen(snap: snap)
+                .environmentObject(camera)
+                .environmentObject(store)
+                .environmentObject(session)
+        }
+    }
+
+    private var controls: some View {
+        VStack {
+            HStack {
+                CircleButton(
+                    systemName: camera.flashMode == .on ? "bolt.fill" : "bolt.slash.fill",
+                    isActive: camera.flashMode == .on,
+                    action: camera.toggleFlash
+                )
+                Spacer()
+                CircleButton(
+                    systemName: "arrow.triangle.2.circlepath.camera.fill",
+                    action: camera.flipCamera
+                )
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 12)
+
+            Spacer()
+
+            ShutterButton(isCapturing: camera.isCapturing, action: camera.capture)
+                .padding(.bottom, AppTabBar.height + 24)
+        }
+    }
+}
+
+// MARK: - Pieces
+
+private struct ShutterButton: View {
+    let isCapturing: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .stroke(.white, lineWidth: 5)
+                    .frame(width: 78, height: 78)
+                Circle()
+                    .fill(.white.opacity(isCapturing ? 0.9 : 0.15))
+                    .frame(width: 62, height: 62)
+            }
+        }
+        .buttonStyle(.plain)
+        .scaleEffect(isCapturing ? 0.92 : 1)
+        .animation(.spring(response: 0.2, dampingFraction: 0.6), value: isCapturing)
+        .disabled(isCapturing)
+    }
+}
+
+private struct CircleButton: View {
+    let systemName: String
+    var isActive: Bool = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(isActive ? .yellow : .white)
+                .frame(width: 44, height: 44)
+                .background(.black.opacity(0.28), in: Circle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct PermissionPrompt: View {
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "camera.fill")
+                .font(.system(size: 40))
+            Text("ChatSnap needs the camera")
+                .font(.title3.weight(.semibold))
+            Text("It's the whole app. Turn it on in Settings and come back.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Button("Open Settings") {
+                guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                UIApplication.shared.open(url)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.white)
+            .foregroundStyle(.black)
+        }
+        .foregroundStyle(.white)
+        .padding(32)
+    }
+}
+
+private struct MessagePlate: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.subheadline)
+            .foregroundStyle(.white.opacity(0.8))
+            .multilineTextAlignment(.center)
+            .padding(32)
+    }
+}

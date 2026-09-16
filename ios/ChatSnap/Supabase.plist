@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Supabase dashboard → Project Settings → API.
+	     The anon key is a public client key; row-level security is what
+	     protects the data. Never put the service_role key here. -->
+	<key>SUPABASE_URL</key>
+	<string>https://xbvmwfvriwhtrotefirx.supabase.co</string>
+	<key>SUPABASE_ANON_KEY</key>
+	<string>eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhidm13ZnZyaXdodHJvdGVmaXJ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk1MTg3NzEsImV4cCI6MjEwNTA5NDc3MX0.gqgetfH6LoWw63JLKR9aCWk1FsOVFM0YAhVj0SUucho</string>
+</dict>
+</plist>
