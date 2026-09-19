@@ -1,40 +1,80 @@
 import Supabase
 import SwiftUI
 
-/// Your friend list, backed by `friendships` + `profiles`.
+/// Friend requests and friends, backed by `friendships`. Every write goes
+/// through a database function so the rules (one row per pair, mutual intent
+/// auto-accepts, accepting opens the DM) live in one place — the server.
 @MainActor
 final class FriendsStore: ObservableObject {
 
+    enum Relationship {
+        case none
+        case friend
+        /// They asked me.
+        case incoming
+        /// I asked them.
+        case outgoing
+    }
+
     @Published private(set) var friends: [Profile] = []
+    @Published private(set) var incoming: [Profile] = []
+    @Published private(set) var outgoing: [Profile] = []
 
     private let client = Backend.client
+    private var realtime: Task<Void, Never>?
 
-    func isFriend(_ profile: Profile) -> Bool {
-        friends.contains { $0.id == profile.id }
+    /// Fired after a change arrives over realtime; accepting creates a DM,
+    /// so the chat list wants to know.
+    var onRemoteChange: (() async -> Void)?
+
+    func relationship(with profile: Profile) -> Relationship {
+        if friends.contains(where: { $0.id == profile.id }) { return .friend }
+        if incoming.contains(where: { $0.id == profile.id }) { return .incoming }
+        if outgoing.contains(where: { $0.id == profile.id }) { return .outgoing }
+        return .none
     }
 
     // MARK: - Loading
 
+    private struct Row: Decodable {
+        enum Status: String, Decodable { case pending, accepted }
+        let status: Status
+        let requester: Profile
+        let addressee: Profile
+    }
+
     func refresh() async {
-        struct Row: Decodable {
-            let profiles: Profile
-        }
+        guard let me = client.auth.currentUser?.id else { return }
         do {
             let rows: [Row] = try await client
                 .from("friendships")
-                .select("profiles!friendships_friend_id_fkey ( id, username, display_name )")
+                .select("""
+                    status,
+                    requester:profiles!friendships_user_id_fkey ( id, username, display_name ),
+                    addressee:profiles!friendships_friend_id_fkey ( id, username, display_name )
+                    """)
                 .order("created_at", ascending: false)
                 .execute()
                 .value
-            friends = rows.map(\.profiles)
+
+            var friends: [Profile] = [], incoming: [Profile] = [], outgoing: [Profile] = []
+            for row in rows {
+                let other = row.requester.id == me ? row.addressee : row.requester
+                switch row.status {
+                case .accepted: friends.append(other)
+                case .pending:  row.requester.id == me ? outgoing.append(other) : incoming.append(other)
+                }
+            }
+            self.friends = friends
+            self.incoming = incoming
+            self.outgoing = outgoing
         } catch {
-            // Keep the last good list.
+            // Keep the last good lists.
         }
     }
 
-    /// People matching the query, minus you and anyone already added. An
-    /// empty query returns the newest sign-ups so there's something to
-    /// browse before there's a real discovery feature.
+    /// People matching the query, minus you and your accepted friends. Pending
+    /// people stay in so their row can show "Requested" / "Accept".
     func search(_ query: String, excluding me: UUID?) async -> [Profile] {
         let trimmed = query.trimmingCharacters(in: .whitespaces).lowercased()
         let excluded = Set(friends.map(\.id) + [me].compactMap { $0 })
@@ -54,35 +94,43 @@ final class FriendsStore: ObservableObject {
 
     // MARK: - Mutations
 
-    func add(_ profile: Profile) async {
-        struct Row: Encodable {
-            let user_id: UUID
-            let friend_id: UUID
-        }
-        guard let me = client.auth.currentUser?.id else { return }
-        do {
-            try await client
-                .from("friendships")
-                .insert(Row(user_id: me, friend_id: profile.id))
-                .execute()
-            friends.insert(profile, at: 0)
-        } catch {
-            // Likely already friends; leave the list alone.
+    private struct Params: Encodable { let other_user: UUID }
+
+    func request(_ profile: Profile) async {
+        _ = try? await client.rpc("send_friend_request", params: Params(other_user: profile.id)).execute()
+        await refresh()
+    }
+
+    func accept(_ profile: Profile) async {
+        _ = try? await client.rpc("accept_friend_request", params: Params(other_user: profile.id)).execute()
+        await refresh()
+    }
+
+    /// Decline an incoming request, cancel an outgoing one, or unfriend.
+    func remove(_ profile: Profile) async {
+        _ = try? await client.rpc("remove_friendship", params: Params(other_user: profile.id)).execute()
+        await refresh()
+    }
+
+    // MARK: - Realtime
+
+    func startRealtime() {
+        realtime?.cancel()
+        realtime = Task { [weak self] in
+            let channel = Backend.client.channel("friendships")
+            let changes = channel.postgresChange(AnyAction.self, schema: "public", table: "friendships")
+            guard (try? await channel.subscribeWithError()) != nil else { return }
+
+            for await _ in changes {
+                guard let self else { return }
+                await self.refresh()
+                await self.onRemoteChange?()
+            }
         }
     }
 
-    func remove(_ profile: Profile) async {
-        guard let me = client.auth.currentUser?.id else { return }
-        do {
-            try await client
-                .from("friendships")
-                .delete()
-                .eq("user_id", value: me.uuidString)
-                .eq("friend_id", value: profile.id.uuidString)
-                .execute()
-            friends.removeAll { $0.id == profile.id }
-        } catch {
-            // Leave it; they'll see it's still there.
-        }
+    func stopRealtime() {
+        realtime?.cancel()
+        realtime = nil
     }
 }

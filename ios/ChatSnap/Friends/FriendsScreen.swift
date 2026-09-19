@@ -2,7 +2,6 @@ import SwiftUI
 
 struct FriendsScreen: View {
     @EnvironmentObject private var friends: FriendsStore
-    @EnvironmentObject private var chats: ChatStore
     @EnvironmentObject private var session: SessionStore
 
     @State private var query = ""
@@ -16,26 +15,44 @@ struct FriendsScreen: View {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     profileCard
 
-                    let mine = filteredFriends
+                    let requests = filtered(friends.incoming)
+                    if !requests.isEmpty {
+                        SectionHeader("Requests · \(friends.incoming.count)")
+                        ForEach(requests) { profile in
+                            FriendRow(profile: profile, isBusy: busy.contains(profile.id)) {
+                                RowActions.accept { accept(profile) } decline: { remove(profile) }
+                            }
+                        }
+                    }
+
+                    let mine = filtered(friends.friends)
                     if !mine.isEmpty {
                         SectionHeader("My Friends · \(friends.friends.count)")
-                        ForEach(mine) { friend in
-                            FriendRow(profile: friend, action: .remove, isBusy: busy.contains(friend.id)) {
-                                pendingRemoval = friend
+                        ForEach(mine) { profile in
+                            FriendRow(profile: profile, isBusy: busy.contains(profile.id)) {
+                                RowActions.remove { pendingRemoval = profile }
                             }
                         }
                     }
 
-                    if !results.isEmpty {
+                    // Search results carry their own relationship state, so a
+                    // pending request reads "Requested" rather than "Add".
+                    let others = results.filter { friends.relationship(with: $0) != .incoming }
+                    if !others.isEmpty {
                         SectionHeader(query.isEmpty ? "People on ChatSnap" : "Add Friends")
-                        ForEach(results) { profile in
-                            FriendRow(profile: profile, action: .add, isBusy: busy.contains(profile.id)) {
-                                add(profile)
+                        ForEach(others) { profile in
+                            FriendRow(profile: profile, isBusy: busy.contains(profile.id)) {
+                                switch friends.relationship(with: profile) {
+                                case .outgoing:
+                                    RowActions.requested { remove(profile) }
+                                default:
+                                    RowActions.add { request(profile) }
+                                }
                             }
                         }
                     }
 
-                    if mine.isEmpty && results.isEmpty {
+                    if requests.isEmpty && mine.isEmpty && others.isEmpty {
                         Text(query.isEmpty ? "Nobody else here yet." : "Nobody matches “\(query)”.")
                             .font(.system(size: 15))
                             .foregroundStyle(.white.opacity(0.4))
@@ -50,7 +67,7 @@ struct FriendsScreen: View {
             .navigationBarTitleDisplayMode(.large)
             .searchable(text: $query, prompt: "Search by name or @username")
             // Re-query on typing (debounced by the task cancelling itself) and
-            // whenever the friend list changes, so added people drop out.
+            // whenever the friend list changes, so accepted people drop out.
             .task(id: "\(query)|\(friends.friends.count)") {
                 try? await Task.sleep(for: .milliseconds(250))
                 guard !Task.isCancelled else { return }
@@ -76,10 +93,10 @@ struct FriendsScreen: View {
         }
     }
 
-    private var filteredFriends: [Profile] {
+    private func filtered(_ people: [Profile]) -> [Profile] {
         let trimmed = query.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !trimmed.isEmpty else { return friends.friends }
-        return friends.friends.filter {
+        guard !trimmed.isEmpty else { return people }
+        return people.filter {
             $0.username.contains(trimmed) || $0.displayName.lowercased().contains(trimmed)
         }
     }
@@ -119,20 +136,14 @@ struct FriendsScreen: View {
         }
     }
 
-    // Adding a friend also opens the DM, so it appears in Chats right away.
-    private func add(_ profile: Profile) {
-        busy.insert(profile.id)
-        Task {
-            await friends.add(profile)
-            await chats.openDM(with: profile)
-            busy.remove(profile.id)
-        }
-    }
+    private func request(_ profile: Profile) { run(profile) { await friends.request(profile) } }
+    private func accept(_ profile: Profile)  { run(profile) { await friends.accept(profile) } }
+    private func remove(_ profile: Profile)  { run(profile) { await friends.remove(profile) } }
 
-    private func remove(_ profile: Profile) {
+    private func run(_ profile: Profile, _ work: @escaping () async -> Void) {
         busy.insert(profile.id)
         Task {
-            await friends.remove(profile)
+            await work()
             busy.remove(profile.id)
         }
     }
@@ -155,13 +166,10 @@ private struct SectionHeader: View {
     }
 }
 
-private struct FriendRow: View {
-    enum Action { case add, remove }
-
+private struct FriendRow<Actions: View>: View {
     let profile: Profile
-    let action: Action
     let isBusy: Bool
-    let onTap: () -> Void
+    @ViewBuilder let actions: () -> Actions
 
     var body: some View {
         HStack(spacing: 14) {
@@ -178,28 +186,78 @@ private struct FriendRow: View {
 
             Spacer()
 
-            Button(action: onTap) {
-                switch action {
-                case .add:
-                    Text("Add")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.black)
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 8)
-                        .background(.white, in: Capsule())
-                case .remove:
-                    Image(systemName: "minus")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.7))
-                        .frame(width: 34, height: 34)
-                        .background(.white.opacity(0.1), in: Circle())
-                }
-            }
-            .buttonStyle(.plain)
-            .disabled(isBusy)
-            .opacity(isBusy ? 0.4 : 1)
+            actions()
+                .disabled(isBusy)
+                .opacity(isBusy ? 0.4 : 1)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 9)
+    }
+}
+
+/// The right-hand side of a friend row, one per relationship state.
+private enum RowActions {
+    static func add(_ action: @escaping () -> Void) -> some View {
+        Pill("Add", filled: true, action: action)
+    }
+
+    static func requested(_ cancel: @escaping () -> Void) -> some View {
+        Pill("Requested", filled: false, action: cancel)
+    }
+
+    static func accept(_ accept: @escaping () -> Void, decline: @escaping () -> Void) -> some View {
+        HStack(spacing: 8) {
+            Pill("Accept", filled: true, action: accept)
+            Round("xmark", action: decline)
+        }
+    }
+
+    static func remove(_ action: @escaping () -> Void) -> some View {
+        Round("minus", action: action)
+    }
+
+    private struct Pill: View {
+        let title: String
+        let filled: Bool
+        let action: () -> Void
+
+        init(_ title: String, filled: Bool, action: @escaping () -> Void) {
+            self.title = title
+            self.filled = filled
+            self.action = action
+        }
+
+        var body: some View {
+            Button(action: action) {
+                Text(title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(filled ? .black : .white.opacity(0.7))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(filled ? Color.white : Color.white.opacity(0.1), in: Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private struct Round: View {
+        let systemName: String
+        let action: () -> Void
+
+        init(_ systemName: String, action: @escaping () -> Void) {
+            self.systemName = systemName
+            self.action = action
+        }
+
+        var body: some View {
+            Button(action: action) {
+                Image(systemName: systemName)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.7))
+                    .frame(width: 34, height: 34)
+                    .background(.white.opacity(0.1), in: Circle())
+            }
+            .buttonStyle(.plain)
+        }
     }
 }

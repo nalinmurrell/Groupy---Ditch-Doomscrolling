@@ -2,6 +2,8 @@ import SwiftUI
 
 struct AppTabBar: View {
     @Binding var selection: AppTab
+    /// Pending friend requests. Zero hides the badge.
+    var friendsBadge: Int = 0
 
     /// Camera controls pad themselves above this.
     static let height: CGFloat = 60
@@ -26,6 +28,17 @@ struct AppTabBar: View {
             VStack(spacing: 3) {
                 Image(systemName: systemName)
                     .font(.system(size: 19, weight: .semibold))
+                    .overlay(alignment: .topTrailing) {
+                        if tab == .friends && friendsBadge > 0 {
+                            Text("\(min(friendsBadge, 99))")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 5)
+                                .frame(minWidth: 16, minHeight: 16)
+                                .background(.red, in: Capsule())
+                                .offset(x: 10, y: -6)
+                        }
+                    }
                 Text(label)
                     .font(.system(size: 10, weight: .medium))
             }

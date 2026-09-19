@@ -76,7 +76,7 @@ struct RootView: View {
             .ignoresSafeArea()
 
             if isTabBarVisible {
-                AppTabBar(selection: $tab)
+                AppTabBar(selection: $tab, friendsBadge: friends.incoming.count)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
@@ -84,10 +84,16 @@ struct RootView: View {
         .task {
             camera.start()
             chats.startRealtime()
+            // Accepting a request opens a DM, so friend changes ripple to chats.
+            friends.onRemoteChange = { [weak chats] in await chats?.refresh() }
+            friends.startRealtime()
             async let a: () = chats.refresh()
             async let b: () = friends.refresh()
             _ = await (a, b)
         }
-        .onDisappear { chats.stopRealtime() }
+        .onDisappear {
+            chats.stopRealtime()
+            friends.stopRealtime()
+        }
     }
 }

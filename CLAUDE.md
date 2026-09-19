@@ -1,6 +1,8 @@
-# ChatSnap
+# Groupy (code name ChatSnap)
 
-Snapchat-style app with **group chat as the whole point**. Opens straight to the
+Snapchat-style app with **group chat as the whole point**. Shipping name is
+**Groupy** (bundle `com.groupy.app`); the Xcode target and Swift module are still
+`ChatSnap` — renaming those is churn with no payoff yet. Opens straight to the
 camera; shoot → pick people → it lands in their thread. No stories, no discover,
 no fluff. One person's project (Nalin, a WGU software engineering student), so
 optimise for learning and momentum, not enterprise ceremony.
@@ -23,7 +25,9 @@ public anon key, so anything not allowed by a policy is not allowed, full stop.
   must NEVER go in either app.
 - Auth: email + password. "Confirm email" is OFF in the dashboard for development.
   Turn it back on (and add Sign in with Apple / Google) before shipping.
-- Tables: `profiles`, `friendships` (directional, no request/accept yet),
+- Tables: `profiles`, `friendships` (request → accept via `status`; writes only
+  through `send_friend_request` / `accept_friend_request` / `remove_friendship`;
+  accepting creates the DM),
   `conversations` (+ `is_group`, `name`), `conversation_members`, `messages`
   (`kind` text|photo, `body`, `photo_path`). Storage bucket `snaps`, private, path
   `snaps/<conversation_id>/<uuid>.jpg` so membership gates the file.
@@ -44,16 +48,24 @@ and photo bubbles, friend search/add/remove, sign-out.
 Verified against the live backend: sign-up creates the auth user AND the profile
 row (trigger works). Friend search hits `profiles`.
 
-**In flight / unverified:** the app was originally built with code signing
-disabled, and the Supabase SDK stores the session in the Keychain, which the
-Simulator refuses for unsigned binaries. Symptom was "Cannot coerce the result to
-a single JSON object" on the camera step (requests going out as anon) and the
-session not surviving relaunch. Fix applied in `ios/project.yml`
-(`CODE_SIGN_IDENTITY: "-"`, ad-hoc) and it builds, but **nobody has yet confirmed
-sign-in → camera step → shell works and persists across relaunch**. Check that
-first when back on the Mac.
+Signing: automatic with team `S9XJ3Y8P67` (paid developer account). Builds must
+be signed — the Supabase SDK keeps the session in the Keychain and the Simulator
+refuses that for unsigned binaries (symptom: "Cannot coerce the result to a
+single JSON object" and sessions not surviving relaunch). Verified fixed.
 
-Not yet built anywhere: group creation UI, push notifications, read receipts
+Runs on Nalin's iPhone 15 Pro (`xcrun devicectl device install app --device
+A7CC0985-B5CD-5979-8F88-8879F0E3C4F7 …`, then `process launch`). First
+TestFlight build (1.0 build 1) uploaded 2026-09-18 via `xcodebuild
+-exportArchive` with `build/ExportOptions.plist` (method app-store-connect,
+destination upload). App record exists in App Store Connect as "Groupy".
+
+**Pending:** the friend-request migration
+(`supabase/migrations/2026-09-18-friend-requests.sql`) must be run on the live
+project before Add/Accept does anything — check with a call to
+`send_friend_request`; PGRST202 means not yet.
+
+Not yet built anywhere: group creation UI, push notifications (needs the Push
+capability on the App ID + APNs key in Supabase), read receipts
 (`isOpened` was dropped when moving to Supabase), Sign in with Apple, ephemeral
 "tap to view" snaps (photos are plain inline thumbnails for now).
 
@@ -62,8 +74,8 @@ Not yet built anywhere: group creation UI, push notifications, read receipts
     cd ios && xcodegen generate
     xcodebuild -project ChatSnap.xcodeproj -scheme ChatSnap -destination 'id=<sim udid>' -derivedDataPath build build
     xcrun simctl install booted build/Build/Products/Debug-iphonesimulator/ChatSnap.app
-    xcrun simctl privacy booted grant camera com.chatsnap.app   # reset by reboots/uninstalls
-    xcrun simctl launch booted com.chatsnap.app
+    xcrun simctl privacy booted grant camera com.groupy.app   # reset by reboots/uninstalls
+    xcrun simctl launch booted com.groupy.app
 
 The `.xcodeproj` is generated and gitignored; edit `project.yml`, not the project.
 The Simulator has no camera; `SimulatorFeed.swift` draws a stand-in behind

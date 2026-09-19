@@ -21,7 +21,7 @@ final class SessionStore: ObservableObject {
     /// Why the last profile load failed, for the onboarding screen to show.
     @Published private(set) var profileError: String?
 
-    private let log = Logger(subsystem: "com.chatsnap.app", category: "session")
+    private let log = Logger(subsystem: "com.groupy.app", category: "session")
 
     private let client = Backend.client
     private var observer: Task<Void, Never>?

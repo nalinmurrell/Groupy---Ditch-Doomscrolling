@@ -14,9 +14,16 @@ struct SnapReviewScreen: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            Image(uiImage: snap.image)
-                .resizable()
-                .scaledToFill()
+            // A real photo is 4:3, the screen isn't. Fill from a screen-sized
+            // base and clip, otherwise the image widens the whole ZStack and
+            // pushes the corner buttons off the edges.
+            Color.clear
+                .overlay {
+                    Image(uiImage: snap.image)
+                        .resizable()
+                        .scaledToFill()
+                }
+                .clipped()
                 .ignoresSafeArea()
 
             VStack {
