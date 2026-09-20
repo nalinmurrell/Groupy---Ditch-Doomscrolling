@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 struct ConversationScreen: View {
     @EnvironmentObject private var store: ChatStore
@@ -8,6 +9,8 @@ struct ConversationScreen: View {
     @State private var draft = ""
     @State private var viewing: Message?
     @State private var isShowingMembers = false
+    @State private var pickedPhoto: PhotosPickerItem?
+    @State private var isSendingPhoto = false
     @Environment(\.dismiss) private var dismiss
 
     private var conversation: Conversation? { store.conversation(conversationID) }
@@ -112,6 +115,30 @@ struct ConversationScreen: View {
                 .background(.white.opacity(0.1), in: Capsule())
                 .foregroundStyle(.white)
 
+            // Camera roll. The picker runs out of process, so no photo
+            // library permission is needed — the user only hands over the
+            // one image they choose.
+            PhotosPicker(selection: $pickedPhoto, matching: .images) {
+                Group {
+                    if isSendingPhoto {
+                        ProgressView().tint(.white)
+                    } else {
+                        Image(systemName: "photo.on.rectangle")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.white)
+                    }
+                }
+                .frame(width: 36, height: 36)
+                .background(Color.white.opacity(0.1), in: Circle())
+            }
+            .buttonStyle(.plain)
+            .disabled(isSendingPhoto)
+            .onChange(of: pickedPhoto) { _, item in
+                guard let item else { return }
+                pickedPhoto = nil
+                Task { await sendPicked(item) }
+            }
+
             Button {
                 let text = draft
                 draft = ""
@@ -134,6 +161,32 @@ struct ConversationScreen: View {
 
     private var canSend: Bool {
         !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// A library photo goes straight into this thread — no review step, you
+    /// already know what it looks like. Downscaled so a 48 MP shot doesn't
+    /// become a 20 MB upload.
+    private func sendPicked(_ item: PhotosPickerItem) async {
+        isSendingPhoto = true
+        defer { isSendingPhoto = false }
+        guard let data = try? await item.loadTransferable(type: Data.self),
+              let image = UIImage(data: data)?.downscaled(longestEdge: 2048)
+        else { return }
+        await store.send(Snap(image: image), to: [conversationID])
+    }
+}
+
+private extension UIImage {
+    func downscaled(longestEdge: CGFloat) -> UIImage {
+        let longest = max(size.width, size.height)
+        guard longest > longestEdge else { return self }
+        let scale = longestEdge / longest
+        let target = CGSize(width: size.width * scale, height: size.height * scale)
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: target, format: format).image { _ in
+            draw(in: CGRect(origin: .zero, size: target))
+        }
     }
 }
 
