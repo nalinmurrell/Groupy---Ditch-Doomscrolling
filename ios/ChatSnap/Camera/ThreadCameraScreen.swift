@@ -5,10 +5,11 @@ import SwiftUI
 struct ThreadCameraScreen: View {
     @EnvironmentObject private var camera: CameraController
     @EnvironmentObject private var store: ChatStore
-    @Environment(\.dismiss) private var dismiss
     let conversationID: Conversation.ID
+    let onClose: () -> Void
 
     @State private var isSending = false
+    @State private var isShown = false
 
     var body: some View {
         ZStack {
@@ -21,7 +22,12 @@ struct ThreadCameraScreen: View {
             }
         }
         .statusBarHidden()
-        .onAppear { camera.captureTarget = conversationID }
+        // Presented without the system slide; a short fade instead.
+        .opacity(isShown ? 1 : 0)
+        .onAppear {
+            camera.captureTarget = conversationID
+            withAnimation(.easeOut(duration: 0.15)) { isShown = true }
+        }
         .onDisappear {
             camera.captureTarget = nil
             camera.discardSnap()
@@ -51,7 +57,7 @@ struct ThreadCameraScreen: View {
 
             VStack {
                 HStack {
-                    CircleButton(systemName: "xmark") { dismiss() }
+                    CircleButton(systemName: "xmark", action: close)
                     Spacer()
                     VStack(spacing: 14) {
                         CircleButton(
@@ -78,6 +84,11 @@ struct ThreadCameraScreen: View {
                 .padding(.bottom, 36)
             }
         }
+    }
+
+    private func close() {
+        withAnimation(.easeIn(duration: 0.12)) { isShown = false }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: onClose)
     }
 
     private func review(_ snap: Snap) -> some View {
@@ -108,7 +119,7 @@ struct ThreadCameraScreen: View {
                         Task {
                             await store.send(snap, to: [conversationID])
                             camera.discardSnap()
-                            dismiss()
+                            close()
                         }
                     } label: {
                         HStack(spacing: 8) {

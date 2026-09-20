@@ -57,9 +57,11 @@ struct ConversationScreen: View {
             PhotoViewer(message: message)
         }
         .fullScreenCover(isPresented: $isShootingSnap) {
-            ThreadCameraScreen(conversationID: conversationID)
-                .environmentObject(camera)
-                .environmentObject(store)
+            ThreadCameraScreen(conversationID: conversationID) {
+                withoutAnimation { isShootingSnap = false }
+            }
+            .environmentObject(camera)
+            .environmentObject(store)
         }
     }
 
@@ -114,8 +116,9 @@ struct ConversationScreen: View {
 
     private var composer: some View {
         HStack(spacing: 10) {
-            // Shoot a snap straight into this thread.
-            Button { isShootingSnap = true } label: {
+            // Shoot a snap straight into this thread. The cover's slide-up
+            // is a fixed system animation, so skip it; the camera fades in.
+            Button { withoutAnimation { isShootingSnap = true } } label: {
                 Image(systemName: "camera.fill")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.white)
@@ -186,6 +189,13 @@ struct ConversationScreen: View {
         else { return }
         await store.send(Snap(image: image), to: [conversationID])
     }
+}
+
+/// Runs a state change with SwiftUI's implicit animations off.
+func withoutAnimation(_ change: () -> Void) {
+    var transaction = Transaction()
+    transaction.disablesAnimations = true
+    withTransaction(transaction, change)
 }
 
 private extension UIImage {
