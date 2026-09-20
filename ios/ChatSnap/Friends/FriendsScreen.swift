@@ -15,40 +15,39 @@ struct FriendsScreen: View {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     profileCard
 
+                    // One person must never appear in two sections at once: the
+                    // lazy list keys rows by ID, and a duplicate makes SwiftUI
+                    // keep whichever row it saw first (usually the "Add" one).
+                    // Search results are filtered here, synchronously, rather
+                    // than trusting the async search to have caught up.
                     let requests = filtered(friends.incoming)
                     if !requests.isEmpty {
                         SectionHeader("Requests · \(friends.incoming.count)")
-                        ForEach(requests) { profile in
-                            FriendRow(profile: profile, isBusy: busy.contains(profile.id)) {
-                                RowActions.accept { accept(profile) } decline: { remove(profile) }
-                            }
+                        ForEach(requests.keyed("request")) { row in
+                            FriendRow(profile: row.profile, state: .incoming, isBusy: busy.contains(row.profile.id),
+                                      primary: { accept(row.profile) }, secondary: { remove(row.profile) })
                         }
                     }
 
                     let mine = filtered(friends.friends)
                     if !mine.isEmpty {
                         SectionHeader("My Friends · \(friends.friends.count)")
-                        ForEach(mine) { profile in
-                            FriendRow(profile: profile, isBusy: busy.contains(profile.id)) {
-                                RowActions.remove { pendingRemoval = profile }
-                            }
+                        ForEach(mine.keyed("friend")) { row in
+                            FriendRow(profile: row.profile, state: .friend, isBusy: busy.contains(row.profile.id),
+                                      primary: { pendingRemoval = row.profile })
                         }
                     }
 
-                    // Search results carry their own relationship state, so a
-                    // pending request reads "Requested" rather than "Add".
-                    let others = results.filter { friends.relationship(with: $0) != .incoming }
+                    let others = results.filter {
+                        let r = friends.relationship(with: $0)
+                        return r == .none || r == .outgoing
+                    }
                     if !others.isEmpty {
                         SectionHeader(query.isEmpty ? "People on ChatSnap" : "Add Friends")
-                        ForEach(others) { profile in
-                            FriendRow(profile: profile, isBusy: busy.contains(profile.id)) {
-                                switch friends.relationship(with: profile) {
-                                case .outgoing:
-                                    RowActions.requested { remove(profile) }
-                                default:
-                                    RowActions.add { request(profile) }
-                                }
-                            }
+                        ForEach(others.keyed("other")) { row in
+                            let outgoing = friends.relationship(with: row.profile) == .outgoing
+                            FriendRow(profile: row.profile, state: outgoing ? .requested : .add, isBusy: busy.contains(row.profile.id),
+                                      primary: { outgoing ? remove(row.profile) : request(row.profile) })
                         }
                     }
 
@@ -65,7 +64,8 @@ struct FriendsScreen: View {
             .background(Color.black)
             .navigationTitle("Friends")
             .navigationBarTitleDisplayMode(.large)
-            .searchable(text: $query, prompt: "Search by name or @username")
+            // iOS 26 would otherwise drop the field to the bottom, under our tab bar.
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search by name or @username")
             // Re-query on typing (debounced by the task cancelling itself) and
             // whenever the friend list changes, so accepted people drop out.
             .task(id: "\(query)|\(friends.friends.count)") {
@@ -151,6 +151,19 @@ struct FriendsScreen: View {
 
 // MARK: - Pieces
 
+/// A profile with a section-scoped identity, so the same person can't collide
+/// with themselves across sections of one lazy list.
+private struct KeyedProfile: Identifiable {
+    let id: String
+    let profile: Profile
+}
+
+private extension Array where Element == Profile {
+    func keyed(_ section: String) -> [KeyedProfile] {
+        map { KeyedProfile(id: "\(section)-\($0.id.uuidString)", profile: $0) }
+    }
+}
+
 private struct SectionHeader: View {
     let title: String
     init(_ title: String) { self.title = title }
@@ -166,10 +179,23 @@ private struct SectionHeader: View {
     }
 }
 
-private struct FriendRow<Actions: View>: View {
+private struct FriendRow: View {
+    enum State {
+        /// Not connected — "Add".
+        case add
+        /// I asked them — "Requested", tap to cancel.
+        case requested
+        /// They asked me — "Accept" / decline.
+        case incoming
+        /// Friends — remove.
+        case friend
+    }
+
     let profile: Profile
+    let state: State
     let isBusy: Bool
-    @ViewBuilder let actions: () -> Actions
+    let primary: () -> Void
+    var secondary: () -> Void = {}
 
     var body: some View {
         HStack(spacing: 14) {
@@ -186,78 +212,73 @@ private struct FriendRow<Actions: View>: View {
 
             Spacer()
 
-            actions()
+            actions
                 .disabled(isBusy)
                 .opacity(isBusy ? 0.4 : 1)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 9)
     }
+
+    @ViewBuilder
+    private var actions: some View {
+        switch state {
+        case .add:
+            Pill("Add", filled: true, action: primary)
+        case .requested:
+            Pill("Requested", filled: false, action: primary)
+        case .incoming:
+            HStack(spacing: 8) {
+                Pill("Accept", filled: true, action: primary)
+                Round("xmark", action: secondary)
+            }
+        case .friend:
+            Round("minus", action: primary)
+        }
+    }
 }
 
-/// The right-hand side of a friend row, one per relationship state.
-private enum RowActions {
-    static func add(_ action: @escaping () -> Void) -> some View {
-        Pill("Add", filled: true, action: action)
+private struct Pill: View {
+    let title: String
+    let filled: Bool
+    let action: () -> Void
+
+    init(_ title: String, filled: Bool, action: @escaping () -> Void) {
+        self.title = title
+        self.filled = filled
+        self.action = action
     }
 
-    static func requested(_ cancel: @escaping () -> Void) -> some View {
-        Pill("Requested", filled: false, action: cancel)
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(filled ? .black : .white.opacity(0.7))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(filled ? Color.white : Color.white.opacity(0.1), in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct Round: View {
+    let systemName: String
+    let action: () -> Void
+
+    init(_ systemName: String, action: @escaping () -> Void) {
+        self.systemName = systemName
+        self.action = action
     }
 
-    static func accept(_ accept: @escaping () -> Void, decline: @escaping () -> Void) -> some View {
-        HStack(spacing: 8) {
-            Pill("Accept", filled: true, action: accept)
-            Round("xmark", action: decline)
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(.white.opacity(0.7))
+                .frame(width: 34, height: 34)
+                .background(.white.opacity(0.1), in: Circle())
         }
-    }
-
-    static func remove(_ action: @escaping () -> Void) -> some View {
-        Round("minus", action: action)
-    }
-
-    private struct Pill: View {
-        let title: String
-        let filled: Bool
-        let action: () -> Void
-
-        init(_ title: String, filled: Bool, action: @escaping () -> Void) {
-            self.title = title
-            self.filled = filled
-            self.action = action
-        }
-
-        var body: some View {
-            Button(action: action) {
-                Text(title)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(filled ? .black : .white.opacity(0.7))
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(filled ? Color.white : Color.white.opacity(0.1), in: Capsule())
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    private struct Round: View {
-        let systemName: String
-        let action: () -> Void
-
-        init(_ systemName: String, action: @escaping () -> Void) {
-            self.systemName = systemName
-            self.action = action
-        }
-
-        var body: some View {
-            Button(action: action) {
-                Image(systemName: systemName)
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.7))
-                    .frame(width: 34, height: 34)
-                    .background(.white.opacity(0.1), in: Circle())
-            }
-            .buttonStyle(.plain)
-        }
+        .buttonStyle(.plain)
     }
 }

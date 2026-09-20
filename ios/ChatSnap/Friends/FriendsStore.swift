@@ -1,3 +1,4 @@
+import OSLog
 import Supabase
 import SwiftUI
 
@@ -21,6 +22,7 @@ final class FriendsStore: ObservableObject {
     @Published private(set) var outgoing: [Profile] = []
 
     private let client = Backend.client
+    private let log = Logger(subsystem: "com.groupy.app", category: "friends")
     private var realtime: Task<Void, Never>?
 
     /// Fired after a change arrives over realtime; accepting creates a DM,
@@ -69,7 +71,7 @@ final class FriendsStore: ObservableObject {
             self.incoming = incoming
             self.outgoing = outgoing
         } catch {
-            // Keep the last good lists.
+            log.error("refresh failed: \(String(describing: error))")
         }
     }
 
@@ -97,18 +99,30 @@ final class FriendsStore: ObservableObject {
     private struct Params: Encodable { let other_user: UUID }
 
     func request(_ profile: Profile) async {
-        _ = try? await client.rpc("send_friend_request", params: Params(other_user: profile.id)).execute()
+        do {
+            _ = try await client.rpc("send_friend_request", params: Params(other_user: profile.id)).execute()
+        } catch {
+            log.error("send_friend_request failed: \(String(describing: error))")
+        }
         await refresh()
     }
 
     func accept(_ profile: Profile) async {
-        _ = try? await client.rpc("accept_friend_request", params: Params(other_user: profile.id)).execute()
+        do {
+            _ = try await client.rpc("accept_friend_request", params: Params(other_user: profile.id)).execute()
+        } catch {
+            log.error("accept_friend_request failed: \(String(describing: error))")
+        }
         await refresh()
     }
 
     /// Decline an incoming request, cancel an outgoing one, or unfriend.
     func remove(_ profile: Profile) async {
-        _ = try? await client.rpc("remove_friendship", params: Params(other_user: profile.id)).execute()
+        do {
+            _ = try await client.rpc("remove_friendship", params: Params(other_user: profile.id)).execute()
+        } catch {
+            log.error("remove_friendship failed: \(String(describing: error))")
+        }
         await refresh()
     }
 

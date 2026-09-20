@@ -10,7 +10,16 @@ alter table public.friendships
 -- rather than surprising anyone with a request they never sent.
 update public.friendships set status = 'accepted';
 
--- One row per pair, whichever direction it was sent in.
+-- One row per pair, whichever direction it was sent in. Under the old
+-- one-sided model two people could each add the other, so drop the newer of
+-- any such duplicate before the index can be created.
+delete from public.friendships f
+using public.friendships g
+where least(f.user_id, f.friend_id)    = least(g.user_id, g.friend_id)
+  and greatest(f.user_id, f.friend_id) = greatest(g.user_id, g.friend_id)
+  and (f.created_at > g.created_at
+       or (f.created_at = g.created_at and f.user_id > g.user_id));
+
 create unique index friendships_pair_idx
   on public.friendships (least(user_id, friend_id), greatest(user_id, friend_id));
 

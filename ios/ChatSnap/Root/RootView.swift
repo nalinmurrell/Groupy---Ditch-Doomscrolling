@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum AppTab: Hashable {
+enum AppTab: Int, Hashable, CaseIterable {
     case chat
     case camera
     case friends
@@ -30,17 +30,23 @@ struct RootView: View {
         session.me != nil && didFinishOnboarding
     }
 
+    /// A returning user sees the camera straight away — dark, shutter greyed
+    /// — while the session is checked, instead of a flash of onboarding.
+    private var showsShell: Bool {
+        isReady || (session.isRestoring && didFinishOnboarding)
+    }
+
     var body: some View {
         Group {
             if !Backend.isConfigured {
                 SetupNeededScreen()
-            } else if isReady {
+            } else if showsShell {
                 shell
             } else {
                 OnboardingFlow()
             }
         }
-        .animation(.easeInOut(duration: 0.3), value: isReady)
+        .animation(.easeInOut(duration: 0.3), value: showsShell)
         .task { session.start() }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
@@ -62,18 +68,18 @@ struct RootView: View {
             // Chat sits to the LEFT of the camera, so a rightward swipe from
             // the camera reveals it — same direction as Snapchat. Friends is
             // the mirror of that on the right.
-            TabView(selection: $tab) {
+            Pager(
+                index: Binding(
+                    get: { tab.rawValue },
+                    set: { tab = AppTab(rawValue: $0) ?? .camera }
+                ),
+                count: AppTab.allCases.count,
+                isSwipeEnabled: openConversations.isEmpty
+            ) {
                 ChatListScreen(path: $openConversations)
-                    .tag(AppTab.chat)
-
                 CameraScreen()
-                    .tag(AppTab.camera)
-
                 FriendsScreen()
-                    .tag(AppTab.friends)
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .ignoresSafeArea()
 
             if isTabBarVisible {
                 AppTabBar(selection: $tab, friendsBadge: friends.incoming.count)
@@ -81,8 +87,10 @@ struct RootView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: isTabBarVisible)
-        .task {
-            camera.start()
+        .task { camera.start() }
+        // Data needs a session; it arrives once restore finishes.
+        .task(id: isReady) {
+            guard isReady else { return }
             chats.startRealtime()
             // Accepting a request opens a DM, so friend changes ripple to chats.
             friends.onRemoteChange = { [weak chats] in await chats?.refresh() }

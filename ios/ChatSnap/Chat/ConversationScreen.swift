@@ -44,6 +44,13 @@ struct ConversationScreen: View {
                 guard let last = thread.last else { return }
                 withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
             }
+            // The keyboard shrinks the scroll view from the bottom. Reacting to
+            // the size itself (not the keyboard notification, which fires before
+            // layout) keeps the latest message pinned above the composer.
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { _ in
+                guard let last = thread.last else { return }
+                proxy.scrollTo(last.id, anchor: .bottom)
+            }
         }
     }
 
@@ -51,6 +58,7 @@ struct ConversationScreen: View {
         HStack(spacing: 10) {
             TextField("Send a message", text: $draft, axis: .vertical)
                 .textFieldStyle(.plain)
+                .submitLabel(.send)
                 .lineLimit(1...4)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 9)
@@ -72,8 +80,9 @@ struct ConversationScreen: View {
             .disabled(!canSend)
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(.ultraThinMaterial)
+        .padding(.top, 8)
+        .padding(.bottom, 7)
+        .background(Color.black)
     }
 
     private var canSend: Bool {

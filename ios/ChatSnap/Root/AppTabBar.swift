@@ -23,7 +23,10 @@ struct AppTabBar: View {
 
     private func item(_ tab: AppTab, systemName: String, label: String) -> some View {
         Button {
-            withAnimation(.easeInOut(duration: 0.25)) { selection = tab }
+            // Tapping snaps straight to the pane; swiping still animates.
+            var t = Transaction()
+            t.disablesAnimations = true
+            withTransaction(t) { selection = tab }
         } label: {
             VStack(spacing: 3) {
                 Image(systemName: systemName)

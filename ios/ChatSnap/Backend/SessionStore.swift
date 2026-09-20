@@ -18,6 +18,10 @@ final class SessionStore: ObservableObject {
 
     @Published private(set) var userID: UUID?
     @Published private(set) var me: Profile?
+    /// True from launch until the stored session has been checked and, if
+    /// there is one, the profile fetched. The UI shows the camera (disabled)
+    /// rather than onboarding during this window.
+    @Published private(set) var isRestoring = true
     /// Why the last profile load failed, for the onboarding screen to show.
     @Published private(set) var profileError: String?
 
@@ -41,11 +45,19 @@ final class SessionStore: ObservableObject {
 
     private func apply(_ session: Session?) {
         let id = session?.user.id
-        guard id != userID || (id != nil && me == nil) else { return }
+        guard id != userID || (id != nil && me == nil) else {
+            isRestoring = false
+            return
+        }
         userID = id
         me = nil
         if id != nil {
-            Task { await loadProfile() }
+            Task {
+                await loadProfile()
+                isRestoring = false
+            }
+        } else {
+            isRestoring = false
         }
     }
 

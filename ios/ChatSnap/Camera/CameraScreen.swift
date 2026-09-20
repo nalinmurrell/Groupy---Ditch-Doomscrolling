@@ -40,25 +40,32 @@ struct CameraScreen: View {
 
     private var controls: some View {
         VStack {
+            // Controls stack down the right edge, Snapchat-style.
             HStack {
-                CircleButton(
-                    systemName: camera.flashMode == .on ? "bolt.fill" : "bolt.slash.fill",
-                    isActive: camera.flashMode == .on,
-                    action: camera.toggleFlash
-                )
                 Spacer()
-                CircleButton(
-                    systemName: "arrow.triangle.2.circlepath.camera.fill",
-                    action: camera.flipCamera
-                )
+                VStack(spacing: 14) {
+                    CircleButton(
+                        systemName: "arrow.triangle.2.circlepath.camera.fill",
+                        action: camera.flipCamera
+                    )
+                    CircleButton(
+                        systemName: camera.flashMode == .on ? "bolt.fill" : "bolt.slash.fill",
+                        isActive: camera.flashMode == .on,
+                        action: camera.toggleFlash
+                    )
+                }
             }
             .padding(.horizontal, 20)
             .padding(.top, 12)
 
             Spacer()
 
-            ShutterButton(isCapturing: camera.isCapturing, action: camera.capture)
-                .padding(.bottom, AppTabBar.height + 24)
+            ShutterButton(
+                isCapturing: camera.isCapturing,
+                isEnabled: camera.status == .running && session.me != nil,
+                action: camera.capture
+            )
+            .padding(.bottom, AppTabBar.height + 24)
         }
     }
 }
@@ -67,23 +74,26 @@ struct CameraScreen: View {
 
 private struct ShutterButton: View {
     let isCapturing: Bool
+    /// Off while the camera warms up or the session is still being restored.
+    let isEnabled: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             ZStack {
                 Circle()
-                    .stroke(.white, lineWidth: 5)
+                    .stroke(.white.opacity(isEnabled ? 1 : 0.3), lineWidth: 5)
                     .frame(width: 78, height: 78)
                 Circle()
-                    .fill(.white.opacity(isCapturing ? 0.9 : 0.15))
+                    .fill(.white.opacity(isCapturing ? 0.9 : (isEnabled ? 0.15 : 0.05)))
                     .frame(width: 62, height: 62)
             }
         }
         .buttonStyle(.plain)
         .scaleEffect(isCapturing ? 0.92 : 1)
         .animation(.spring(response: 0.2, dampingFraction: 0.6), value: isCapturing)
-        .disabled(isCapturing)
+        .animation(.easeInOut(duration: 0.25), value: isEnabled)
+        .disabled(isCapturing || !isEnabled)
     }
 }
 
