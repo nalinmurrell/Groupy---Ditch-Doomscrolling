@@ -12,10 +12,14 @@ struct GroupMembersSheet: View {
     let onLeft: () -> Void
 
     @State private var isConfirmingLeave = false
+    @State private var isAddingMembers = false
+
+    /// The store's copy, so members added while this is open show up.
+    private var current: Conversation { chats.conversation(conversation.id) ?? conversation }
 
     private var members: [Profile] {
         // You first, then everyone else alphabetically.
-        conversation.members.sorted {
+        current.members.sorted {
             if $0.id == session.userID { return true }
             if $1.id == session.userID { return false }
             return $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
@@ -31,7 +35,7 @@ struct GroupMembersSheet: View {
                         Text(conversation.name ?? "Group")
                             .font(.system(size: 22, weight: .bold))
                             .foregroundStyle(.white)
-                        Text("\(conversation.members.count) members")
+                        Text("\(current.members.count) members")
                             .font(.system(size: 14))
                             .foregroundStyle(.white.opacity(0.5))
                     }
@@ -45,6 +49,24 @@ struct GroupMembersSheet: View {
                         .foregroundStyle(.white.opacity(0.4))
                         .padding(.horizontal, 20)
                         .padding(.bottom, 6)
+
+                    Button { isAddingMembers = true } label: {
+                        HStack(spacing: 14) {
+                            Image(systemName: "plus")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 46, height: 46)
+                                .background(.white.opacity(0.1), in: Circle())
+                            Text("Add Members")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(.white)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 10)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
 
                     ForEach(members) { member in
                         HStack(spacing: 14) {
@@ -93,6 +115,13 @@ struct GroupMembersSheet: View {
                 .padding(.horizontal, 20)
                 .padding(.bottom, 12)
                 .background(Color.black)
+            }
+            .sheet(isPresented: $isAddingMembers) {
+                // Live-updates as the store refreshes, so the picker's
+                // "already in" list is current.
+                AddMembersSheet(conversation: current)
+                    .presentationDetents([.medium, .large])
+                    .preferredColorScheme(.dark)
             }
             .confirmationDialog("Leave \(conversation.name ?? "this group")?", isPresented: $isConfirmingLeave, titleVisibility: .visible) {
                 Button("Leave Group", role: .destructive) {

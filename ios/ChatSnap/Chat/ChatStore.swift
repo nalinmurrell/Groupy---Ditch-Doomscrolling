@@ -170,6 +170,23 @@ final class ChatStore: ObservableObject {
         }
     }
 
+    /// Add friends to a group. Returns false if the server said no.
+    func addMembers(_ members: [Profile], to id: Conversation.ID) async -> Bool {
+        struct Params: Encodable {
+            let cid: UUID
+            let member_ids: [UUID]
+        }
+        do {
+            try await client
+                .rpc("add_group_members", params: Params(cid: id, member_ids: members.map(\.id)))
+                .execute()
+            await refresh()
+            return true
+        } catch {
+            return false
+        }
+    }
+
     func leaveGroup(_ id: Conversation.ID) async {
         struct Params: Encodable { let cid: UUID }
         _ = try? await client.rpc("leave_group", params: Params(cid: id)).execute()

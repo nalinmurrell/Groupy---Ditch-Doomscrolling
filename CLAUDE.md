@@ -60,7 +60,7 @@ fixes). Bump `CURRENT_PROJECT_VERSION` in project.yml before each upload. Upload
 -exportArchive` with `build/ExportOptions.plist` (method app-store-connect,
 destination upload). App record exists in App Store Connect as "Groupy".
 
-Migrations applied on the live project: friend requests (09-18), groups (09-20).
+Migrations applied on the live project: friend requests (09-18), groups (09-20), pins (09-20). Add-members (`2026-09-20-add-members.sql`) must be run in the SQL editor before "Add Members" works.
 Test accounts to delete under Authentication → Users: `probe-1789526196@…`,
 `probe2-…@chatsnap-probe.io`. There is a real group "Groupy Test" between Nalin
 and Probe from verification; leave it from the app.
@@ -68,7 +68,7 @@ and Probe from verification; leave it from the app.
 Groups: `create_group(name, member_ids)` (members must be accepted friends,
 enforced server-side) and `leave_group(cid)`; `conversation_members` is on
 realtime so being added shows up live. UI: New Group button on the chat list,
-sender names on the first message of each run in group threads, Leave via ⋯.
+sender names on the first message of each run in group threads; tap the title for the members sheet (Add Members via `add_group_members(cid, member_ids)`, Leave Group).
 
 Not yet built anywhere: push notifications (needs the Push
 capability on the App ID + APNs key in Supabase), read receipts
