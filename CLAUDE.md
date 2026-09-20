@@ -60,7 +60,7 @@ fixes). Bump `CURRENT_PROJECT_VERSION` in project.yml before each upload. Upload
 -exportArchive` with `build/ExportOptions.plist` (method app-store-connect,
 destination upload). App record exists in App Store Connect as "Groupy".
 
-Migrations applied on the live project: friend requests (09-18), groups (09-20), pins (09-20). add-members (09-20). Delete-messages (`2026-09-20-delete-messages.sql`: sender delete policies on messages + storage) must be run in the SQL editor before Delete works.
+Migrations applied on the live project: friend requests (09-18), groups (09-20), pins (09-20). add-members (09-20). delete-messages (09-20), push (09-21).
 Test accounts to delete under Authentication → Users: `probe-1789526196@…`,
 `probe2-…@chatsnap-probe.io`. There is a real group "Groupy Test" between Nalin
 and Probe from verification; leave it from the app.
@@ -70,8 +70,17 @@ enforced server-side) and `leave_group(cid)`; `conversation_members` is on
 realtime so being added shows up live. UI: New Group button on the chat list,
 sender names on the first message of each run in group threads; tap the title for the members sheet (Add Members via `add_group_members(cid, member_ids)`, Leave Group).
 
-Not yet built anywhere: push notifications (needs the Push
-capability on the App ID + APNs key in Supabase), read receipts
+Push notifications (2026-09-20): `device_tokens` table, `notify_new_message`
+trigger (pg_net → edge function), `supabase/functions/notify` sends to APNs
+directly with an ES256 JWT. Secrets APNS_KEY_ID / APNS_TEAM_ID / APNS_BUNDLE_ID /
+APNS_PRIVATE_KEY are set on the project (key id QUNNC6VAQA; the .p8 lives
+outside the repo and `*.p8` is gitignored). Deploy with
+`supabase functions deploy notify --project-ref xbvmwfvriwhtrotefirx` (CLI is
+installed and logged in). Debug builds register sandbox tokens, TestFlight
+production — the function picks the host per token. Verified end to end on
+Nalin's phone.
+
+Not yet built anywhere: read receipts
 (`isOpened` was dropped when moving to Supabase), Sign in with Apple, ephemeral
 "tap to view" snaps (photos are plain inline thumbnails for now).
 
