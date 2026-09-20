@@ -58,9 +58,21 @@ struct ConversationScreen: View {
                 LazyVStack(spacing: 10) {
                     ForEach(Array(thread.enumerated()), id: \.element.id) { index, message in
                         let mine = message.isFromMe(session.userID)
+                        let previous = index > 0 ? thread[index - 1] : nil
+                        // A timestamp opens the thread and marks any lull of
+                        // twenty minutes or more — the iMessage rhythm, not a
+                        // time on every bubble.
+                        if previous.map({ message.createdAt.timeIntervalSince($0.createdAt) > 20 * 60 }) ?? true {
+                            Text(message.createdAt.threadTimestamp)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.35))
+                                .frame(maxWidth: .infinity)
+                                .padding(.top, index == 0 ? 0 : 10)
+                                .padding(.bottom, 2)
+                        }
                         // In a group, label the first message of each run from
                         // someone else — not every bubble, that's noise.
-                        let startsRun = index == 0 || thread[index - 1].senderID != message.senderID
+                        let startsRun = previous?.senderID != message.senderID
                         MessageRow(
                             message: message,
                             isFromMe: mine,
