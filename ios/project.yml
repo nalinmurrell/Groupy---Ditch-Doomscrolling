@@ -23,6 +23,8 @@ targets:
       path: ChatSnap/Info.plist
       properties:
         CFBundleDisplayName: Groupy
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen:
           UIColorName: ""
         # HTTPS only — no custom crypto — so no export-compliance prompt per upload.
@@ -38,8 +40,9 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.groupy.app
-        MARKETING_VERSION: "0.1.0"
-        CURRENT_PROJECT_VERSION: "1"
+        # Bump CURRENT_PROJECT_VERSION before every TestFlight upload.
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "2"
         SWIFT_VERSION: "5.0"
         TARGETED_DEVICE_FAMILY: "1"
         GENERATE_INFOPLIST_FILE: NO

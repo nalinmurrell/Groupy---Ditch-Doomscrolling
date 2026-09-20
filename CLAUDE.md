@@ -54,8 +54,9 @@ refuses that for unsigned binaries (symptom: "Cannot coerce the result to a
 single JSON object" and sessions not surviving relaunch). Verified fixed.
 
 Runs on Nalin's iPhone 15 Pro (`xcrun devicectl device install app --device
-A7CC0985-B5CD-5979-8F88-8879F0E3C4F7 …`, then `process launch`). First
-TestFlight build (1.0 build 1) uploaded 2026-09-18 via `xcodebuild
+A7CC0985-B5CD-5979-8F88-8879F0E3C4F7 …`, then `process launch`). TestFlight:
+build 1 (2026-09-18), build 2 (2026-09-20, has groups/pins/friend-request
+fixes). Bump `CURRENT_PROJECT_VERSION` in project.yml before each upload. Uploaded via `xcodebuild
 -exportArchive` with `build/ExportOptions.plist` (method app-store-connect,
 destination upload). App record exists in App Store Connect as "Groupy".
 
