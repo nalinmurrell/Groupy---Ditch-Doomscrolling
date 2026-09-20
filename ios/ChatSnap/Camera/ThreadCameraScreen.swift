@@ -46,7 +46,7 @@ struct ThreadCameraScreen: View {
                 if camera.usesSimulatorFeed {
                     SimulatorFeed()
                 } else {
-                    CameraPreview(session: camera.session)
+                    CameraPreview(layer: camera.previewLayer)
                 }
             }
             .ignoresSafeArea()

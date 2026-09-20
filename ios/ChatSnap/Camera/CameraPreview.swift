@@ -2,26 +2,42 @@ import AVFoundation
 import SwiftUI
 import UIKit
 
-/// Full-bleed live preview. Backed by a UIView whose own layer *is* the
-/// preview layer, so there's no layer-resizing lag when the view lays out.
+/// Full-bleed live preview. Hosts the controller's single preview layer;
+/// whichever active preview asked for it most recently has it.
 struct CameraPreview: UIViewRepresentable {
-    let session: AVCaptureSession
+    let layer: AVCaptureVideoPreviewLayer
+    /// False while another preview (the in-thread camera) owns the layer.
+    var isActive = true
 
     func makeUIView(context: Context) -> PreviewView {
         let view = PreviewView()
-        view.previewLayer.session = session
-        view.previewLayer.videoGravity = .resizeAspectFill
-        if let connection = view.previewLayer.connection,
-           connection.isVideoRotationAngleSupported(90) {
-            connection.videoRotationAngle = 90
-        }
+        view.backgroundColor = .black
+        if isActive { view.adopt(layer) }
         return view
     }
 
-    func updateUIView(_ uiView: PreviewView, context: Context) {}
+    func updateUIView(_ uiView: PreviewView, context: Context) {
+        if isActive { uiView.adopt(layer) }
+    }
 }
 
 final class PreviewView: UIView {
-    override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
-    var previewLayer: AVCaptureVideoPreviewLayer { layer as! AVCaptureVideoPreviewLayer }
+    private var preview: AVCaptureVideoPreviewLayer?
+
+    func adopt(_ layer: AVCaptureVideoPreviewLayer) {
+        guard layer.superlayer !== self.layer else { return }
+        layer.removeFromSuperlayer()
+        preview = layer
+        self.layer.addSublayer(layer)
+        setNeedsLayout()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        // No implicit animation, or the feed visibly lags a rotation/resize.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        preview?.frame = bounds
+        CATransaction.commit()
+    }
 }

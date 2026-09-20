@@ -121,7 +121,11 @@ struct ConversationScreen: View {
         HStack(spacing: 10) {
             // Shoot a snap straight into this thread. The cover's slide-up
             // is a fixed system animation, so skip it; the camera fades in.
-            Button { withoutAnimation { isShootingSnap = true } } label: {
+            Button {
+                // Claim the preview layer before the cover builds its view.
+                camera.captureTarget = conversationID
+                withoutAnimation { isShootingSnap = true }
+            } label: {
                 Image(systemName: "camera.fill")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.white)

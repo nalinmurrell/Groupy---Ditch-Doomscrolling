@@ -30,10 +30,22 @@ final class CameraController: NSObject, ObservableObject {
 
     let session = AVCaptureSession()
 
+    /// The one preview layer for the whole app. Attaching a layer to a running
+    /// session takes the session's configuration lock and can stall the main
+    /// thread for seconds, so this is created once, before the session runs,
+    /// and views move it between themselves (see `CameraPreview`).
+    let previewLayer: AVCaptureVideoPreviewLayer
+
     private let sessionQueue = DispatchQueue(label: "com.chatsnap.camera")
     private let photoOutput = AVCapturePhotoOutput()
     private var videoInput: AVCaptureDeviceInput?
     private var isConfigured = false
+
+    override init() {
+        previewLayer = AVCaptureVideoPreviewLayer(session: session)
+        previewLayer.videoGravity = .resizeAspectFill
+        super.init()
+    }
 
     // MARK: - Lifecycle
 
@@ -109,6 +121,10 @@ final class CameraController: NSObject, ObservableObject {
             self.photoOutput.maxPhotoQualityPrioritization = .balanced
 
             self.session.commitConfiguration()
+            if let connection = self.previewLayer.connection,
+               connection.isVideoRotationAngleSupported(90) {
+                connection.videoRotationAngle = 90
+            }
             self.isConfigured = true
             self.session.startRunning()
             self.publish { $0.status = .running }

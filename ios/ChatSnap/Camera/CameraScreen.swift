@@ -15,7 +15,7 @@ struct CameraScreen: View {
                 if camera.usesSimulatorFeed {
                     SimulatorFeed()
                 } else {
-                    CameraPreview(session: camera.session)
+                    CameraPreview(layer: camera.previewLayer, isActive: camera.captureTarget == nil)
                 }
             }
             .ignoresSafeArea()
