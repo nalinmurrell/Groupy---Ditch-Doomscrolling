@@ -61,6 +61,10 @@ struct Conversation: Identifiable, Hashable {
     let name: String?
     var members: [Profile]
     var lastMessage: Message?
+    /// When I pinned it, or nil. Mine only — everyone has their own pins.
+    var pinnedAt: Date?
+
+    var isPinned: Bool { pinnedAt != nil }
 
     /// Group name, or the other person's name in a DM.
     func title(for me: UUID?) -> String {
@@ -118,7 +122,15 @@ struct GroupIdentity: AvatarRepresentable {
 /// `Conversation` by the store.
 struct ConversationRow: Decodable {
     struct Member: Decodable {
+        let userID: UUID
+        let pinnedAt: Date?
         let profiles: Profile
+
+        enum CodingKeys: String, CodingKey {
+            case profiles
+            case userID = "user_id"
+            case pinnedAt = "pinned_at"
+        }
     }
 
     let id: UUID
@@ -133,13 +145,14 @@ struct ConversationRow: Decodable {
         case conversationMembers = "conversation_members"
     }
 
-    var conversation: Conversation {
+    func conversation(for me: UUID?) -> Conversation {
         Conversation(
             id: id,
             isGroup: isGroup,
             name: name,
             members: conversationMembers.map(\.profiles),
-            lastMessage: messages.first
+            lastMessage: messages.first,
+            pinnedAt: conversationMembers.first { $0.userID == me }?.pinnedAt
         )
     }
 }

@@ -66,6 +66,8 @@ create table public.conversation_members (
   conversation_id  uuid not null references public.conversations (id) on delete cascade,
   user_id          uuid not null references public.profiles (id) on delete cascade,
   joined_at        timestamptz not null default now(),
+  -- This member's pin, if any. At most three per person (see set_pinned).
+  pinned_at        timestamptz,
   primary key (conversation_id, user_id)
 );
 
@@ -291,6 +293,32 @@ begin
   delete from public.conversations c
   where c.id = cid
     and not exists (select 1 from public.conversation_members where conversation_id = cid);
+end;
+$$;
+
+create function public.set_pinned(cid uuid, pinned boolean)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  me uuid := auth.uid();
+begin
+  if me is null then raise exception 'not signed in'; end if;
+
+  if pinned and (
+    select count(*) from public.conversation_members
+    where user_id = me and pinned_at is not null and conversation_id <> cid
+  ) >= 3 then
+    raise exception 'you can pin up to 3 chats';
+  end if;
+
+  update public.conversation_members
+  set pinned_at = case when pinned then now() else null end
+  where conversation_id = cid and user_id = me;
+
+  if not found then raise exception 'not a member of that chat'; end if;
 end;
 $$;
 

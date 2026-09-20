@@ -17,12 +17,21 @@ final class ChatStore: ObservableObject {
     private var realtime: Task<Void, Never>?
     private var membership: Task<Void, Never>?
 
-    /// Most recent activity first.
+    /// Pinned first (in the order they were pinned), then most recent activity.
     var sortedConversations: [Conversation] {
         conversations.sorted {
-            ($0.lastMessage?.createdAt ?? .distantPast) > ($1.lastMessage?.createdAt ?? .distantPast)
+            switch ($0.pinnedAt, $1.pinnedAt) {
+            case let (a?, b?): return a < b
+            case (.some, nil): return true
+            case (nil, .some): return false
+            case (nil, nil):
+                return ($0.lastMessage?.createdAt ?? .distantPast) > ($1.lastMessage?.createdAt ?? .distantPast)
+            }
         }
     }
+
+    var pinnedCount: Int { conversations.filter(\.isPinned).count }
+    nonisolated static let maxPins = 3
 
     func conversation(_ id: Conversation.ID) -> Conversation? {
         conversations.first { $0.id == id }
@@ -37,14 +46,15 @@ final class ChatStore: ObservableObject {
                 .from("conversations")
                 .select("""
                     id, is_group, name,
-                    conversation_members ( profiles ( id, username, display_name ) ),
+                    conversation_members ( user_id, pinned_at, profiles ( id, username, display_name ) ),
                     messages ( id, conversation_id, sender_id, kind, body, photo_path, created_at )
                     """)
                 .order("created_at", ascending: false, referencedTable: "messages")
                 .limit(1, referencedTable: "messages")
                 .execute()
                 .value
-            conversations = rows.map(\.conversation)
+            let me = client.auth.currentUser?.id
+            conversations = rows.map { $0.conversation(for: me) }
         } catch {
             // Keep whatever we had; the list just goes stale until next pull.
         }
@@ -166,6 +176,25 @@ final class ChatStore: ObservableObject {
         messages[id] = nil
         conversations.removeAll { $0.id == id }
         await refresh()
+    }
+
+    // MARK: - Pins
+
+    enum PinError: LocalizedError {
+        case limit
+        var errorDescription: String? { "You can pin up to \(ChatStore.maxPins) chats." }
+    }
+
+    func setPinned(_ id: Conversation.ID, _ pinned: Bool) async throws {
+        if pinned && pinnedCount >= Self.maxPins { throw PinError.limit }
+        struct Params: Encodable {
+            let cid: UUID
+            let pinned: Bool
+        }
+        try await client.rpc("set_pinned", params: Params(cid: id, pinned: pinned)).execute()
+        if let i = conversations.firstIndex(where: { $0.id == id }) {
+            conversations[i].pinnedAt = pinned ? Date() : nil
+        }
     }
 
     // MARK: - Photos

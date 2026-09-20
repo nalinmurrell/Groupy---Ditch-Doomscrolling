@@ -6,6 +6,7 @@ struct ChatListScreen: View {
     @Binding var path: [Conversation.ID]
 
     @State private var isCreatingGroup = false
+    @State private var pinError: String?
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -25,6 +26,14 @@ struct ChatListScreen: View {
                             ChatRow(conversation: conversation, me: session.userID)
                         }
                         .buttonStyle(.plain)
+                        .contextMenu {
+                            Button {
+                                togglePin(conversation)
+                            } label: {
+                                Label(conversation.isPinned ? "Unpin" : "Pin",
+                                      systemImage: conversation.isPinned ? "pin.slash" : "pin")
+                            }
+                        }
                         Divider().padding(.leading, 84).opacity(0.25)
                     }
                 }
@@ -33,17 +42,27 @@ struct ChatListScreen: View {
             }
             .refreshable { await store.refresh() }
             .background(Color.black)
+            .alert("Can't pin", isPresented: .init(get: { pinError != nil }, set: { if !$0 { pinError = nil } })) {
+                Button("OK", role: .cancel) { pinError = nil }
+            } message: {
+                Text(pinError ?? "")
+            }
             .navigationTitle("Chats")
             .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button { isCreatingGroup = true } label: {
-                        Image(systemName: "person.2.badge.plus")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(.white)
-                    }
-                    .accessibilityLabel("New Group")
+            // Floating, bottom-right, clear of the tab bar — thumb territory.
+            .overlay(alignment: .bottomTrailing) {
+                Button { isCreatingGroup = true } label: {
+                    Image(systemName: "person.2.badge.plus")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(.black)
+                        .frame(width: 56, height: 56)
+                        .background(.white, in: Circle())
+                        .shadow(color: .black.opacity(0.5), radius: 10, y: 4)
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("New Group")
+                .padding(.trailing, 20)
+                .padding(.bottom, AppTabBar.height + 16)
             }
             .sheet(isPresented: $isCreatingGroup) {
                 NewGroupSheet { id in path = [id] }
@@ -51,6 +70,16 @@ struct ChatListScreen: View {
             }
             .navigationDestination(for: Conversation.ID.self) { id in
                 ConversationScreen(conversationID: id)
+            }
+        }
+    }
+
+    private func togglePin(_ conversation: Conversation) {
+        Task {
+            do {
+                try await store.setPinned(conversation.id, !conversation.isPinned)
+            } catch {
+                pinError = error.localizedDescription
             }
         }
     }
@@ -76,10 +105,18 @@ private struct ChatRow: View {
 
             Spacer()
 
-            if let sentAt = conversation.lastMessage?.createdAt {
-                Text(sentAt.chatTimestamp)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.white.opacity(0.35))
+            VStack(alignment: .trailing, spacing: 4) {
+                if let sentAt = conversation.lastMessage?.createdAt {
+                    Text(sentAt.chatTimestamp)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white.opacity(0.35))
+                }
+                if conversation.isPinned {
+                    Image(systemName: "pin.fill")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.45))
+                        .rotationEffect(.degrees(45))
+                }
             }
         }
         .padding(.horizontal, 20)
