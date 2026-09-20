@@ -21,6 +21,10 @@ final class CameraController: NSObject, ObservableObject {
     /// The photo the user just took. Non-nil means we're on the review screen.
     @Published var snap: Snap?
 
+    /// Set while the in-thread camera is up: snaps then belong to that
+    /// conversation and the main camera pane must not present them.
+    @Published var captureTarget: UUID?
+
     /// True only in the Simulator, where there is no camera to preview.
     @Published private(set) var usesSimulatorFeed = false
 

@@ -4,11 +4,13 @@ import PhotosUI
 struct ConversationScreen: View {
     @EnvironmentObject private var store: ChatStore
     @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var camera: CameraController
     let conversationID: Conversation.ID
 
     @State private var draft = ""
     @State private var viewing: Message?
     @State private var isShowingMembers = false
+    @State private var isShootingSnap = false
     @State private var pickedPhoto: PhotosPickerItem?
     @State private var isSendingPhoto = false
     @FocusState private var isComposing: Bool
@@ -53,6 +55,11 @@ struct ConversationScreen: View {
         .task { await store.loadMessages(for: conversationID) }
         .fullScreenCover(item: $viewing) { message in
             PhotoViewer(message: message)
+        }
+        .fullScreenCover(isPresented: $isShootingSnap) {
+            ThreadCameraScreen(conversationID: conversationID)
+                .environmentObject(camera)
+                .environmentObject(store)
         }
     }
 
@@ -107,6 +114,16 @@ struct ConversationScreen: View {
 
     private var composer: some View {
         HStack(spacing: 10) {
+            // Shoot a snap straight into this thread.
+            Button { isShootingSnap = true } label: {
+                Image(systemName: "camera.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 36, height: 36)
+                    .background(Color.white.opacity(0.1), in: Circle())
+            }
+            .buttonStyle(.plain)
+
             // Single line so Return means send. (A multiline field turns
             // Return into a newline and never submits.)
             TextField("Send a message", text: $draft)

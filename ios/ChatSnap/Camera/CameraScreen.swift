@@ -30,7 +30,11 @@ struct CameraScreen: View {
                 controls
             }
         }
-        .fullScreenCover(item: $camera.snap) { snap in
+        // While the in-thread camera is up, its snap isn't ours to show.
+        .fullScreenCover(item: Binding(
+            get: { camera.captureTarget == nil ? camera.snap : nil },
+            set: { camera.snap = $0 }
+        )) { snap in
             SnapReviewScreen(snap: snap)
                 .environmentObject(camera)
                 .environmentObject(store)
@@ -72,7 +76,7 @@ struct CameraScreen: View {
 
 // MARK: - Pieces
 
-private struct ShutterButton: View {
+struct ShutterButton: View {
     let isCapturing: Bool
     /// Off while the camera warms up or the session is still being restored.
     let isEnabled: Bool
@@ -97,7 +101,7 @@ private struct ShutterButton: View {
     }
 }
 
-private struct CircleButton: View {
+struct CircleButton: View {
     let systemName: String
     var isActive: Bool = false
     let action: () -> Void
@@ -114,7 +118,7 @@ private struct CircleButton: View {
     }
 }
 
-private struct PermissionPrompt: View {
+struct PermissionPrompt: View {
     var body: some View {
         VStack(spacing: 16) {
             Image(systemName: "camera.fill")
@@ -138,7 +142,7 @@ private struct PermissionPrompt: View {
     }
 }
 
-private struct MessagePlate: View {
+struct MessagePlate: View {
     let text: String
 
     var body: some View {
