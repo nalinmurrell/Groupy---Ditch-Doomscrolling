@@ -7,7 +7,7 @@ struct ConversationScreen: View {
 
     @State private var draft = ""
     @State private var viewing: Message?
-    @State private var isConfirmingLeave = false
+    @State private var isShowingMembers = false
     @Environment(\.dismiss) private var dismiss
 
     private var conversation: Conversation? { store.conversation(conversationID) }
@@ -22,28 +22,29 @@ struct ConversationScreen: View {
         .navigationTitle(conversation?.title(for: session.userID) ?? "Chat")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if conversation?.isGroup == true {
-                ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        Button("Leave Group", role: .destructive) { isConfirmingLeave = true }
-                    } label: {
-                        Image(systemName: "ellipsis")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.white)
+            // In a group the title is a button: tap for members.
+            if let conversation, conversation.isGroup {
+                ToolbarItem(placement: .principal) {
+                    Button { isShowingMembers = true } label: {
+                        HStack(spacing: 4) {
+                            Text(conversation.title(for: session.userID))
+                                .font(.system(size: 17, weight: .semibold))
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.5))
+                        }
+                        .foregroundStyle(.white)
                     }
+                    .buttonStyle(.plain)
                 }
             }
         }
-        .confirmationDialog("Leave \(conversation?.name ?? "this group")?", isPresented: $isConfirmingLeave, titleVisibility: .visible) {
-            Button("Leave Group", role: .destructive) {
-                Task {
-                    await store.leaveGroup(conversationID)
-                    dismiss()
-                }
+        .sheet(isPresented: $isShowingMembers) {
+            if let conversation {
+                GroupMembersSheet(conversation: conversation) { dismiss() }
+                    .presentationDetents([.medium, .large])
+                    .preferredColorScheme(.dark)
             }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("You'll stop getting messages from it. Someone can add you back.")
         }
         .task { await store.loadMessages(for: conversationID) }
         .fullScreenCover(item: $viewing) { message in
