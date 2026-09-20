@@ -78,7 +78,9 @@ outside the repo and `*.p8` is gitignored). Deploy with
 `supabase functions deploy notify --project-ref xbvmwfvriwhtrotefirx` (CLI is
 installed and logged in). Debug builds register sandbox tokens, TestFlight
 production — the function picks the host per token. Verified end to end on
-Nalin's phone.
+Nalin's phone. Apply SQL with `supabase db query --linked --project-ref
+xbvmwfvriwhtrotefirx "$(cat file.sql)"` rather than pasting into the dashboard —
+a pasted anon key came through mangled once and cost a debugging round.
 
 Not yet built anywhere: read receipts
 (`isOpened` was dropped when moving to Supabase), Sign in with Apple, ephemeral
