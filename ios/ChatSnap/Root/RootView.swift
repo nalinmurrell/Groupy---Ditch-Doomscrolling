@@ -11,6 +11,7 @@ struct RootView: View {
     @EnvironmentObject private var session: SessionStore
     @EnvironmentObject private var chats: ChatStore
     @EnvironmentObject private var friends: FriendsStore
+    @EnvironmentObject private var push: PushManager
     @Environment(\.scenePhase) private var scenePhase
 
     /// Set on the last onboarding step. Survives sign-out so a returning
@@ -91,6 +92,7 @@ struct RootView: View {
         // Data needs a session; it arrives once restore finishes.
         .task(id: isReady) {
             guard isReady else { return }
+            push.enable()
             chats.startRealtime()
             // Accepting a request opens a DM, so friend changes ripple to chats.
             friends.onRemoteChange = { [weak chats] in await chats?.refresh() }
@@ -102,6 +104,15 @@ struct RootView: View {
         .onDisappear {
             chats.stopRealtime()
             friends.stopRealtime()
+        }
+        // A tapped notification lands in its thread.
+        .onChange(of: push.pendingConversation) { _, id in
+            guard let id else { return }
+            push.pendingConversation = nil
+            withoutAnimation {
+                tab = .chat
+                openConversations = [id]
+            }
         }
     }
 }

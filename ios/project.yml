@@ -19,6 +19,11 @@ targets:
     dependencies:
       - package: Supabase
         product: Supabase
+    entitlements:
+      path: ChatSnap/ChatSnap.entitlements
+      properties:
+        # Xcode flips this to production when archiving for TestFlight.
+        aps-environment: development
     info:
       path: ChatSnap/Info.plist
       properties:

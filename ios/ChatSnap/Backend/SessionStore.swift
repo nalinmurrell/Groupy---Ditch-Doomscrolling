@@ -108,6 +108,7 @@ final class SessionStore: ObservableObject {
     }
 
     func signOut() async {
+        await PushManager.shared.forgetToken()
         try? await client.auth.signOut()
     }
 }

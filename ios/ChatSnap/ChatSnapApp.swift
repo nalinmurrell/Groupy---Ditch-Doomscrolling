@@ -9,6 +9,8 @@ struct ChatSnapApp: App {
     @StateObject private var session = SessionStore()
     @StateObject private var chats = ChatStore()
     @StateObject private var friends = FriendsStore()
+    @StateObject private var push = PushManager.shared
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
         WindowGroup {
@@ -17,6 +19,7 @@ struct ChatSnapApp: App {
                 .environmentObject(session)
                 .environmentObject(chats)
                 .environmentObject(friends)
+                .environmentObject(push)
                 .preferredColorScheme(.dark)
                 .statusBarHidden()
         }

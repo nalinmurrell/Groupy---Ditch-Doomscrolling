@@ -55,6 +55,13 @@ struct ConversationScreen: View {
             }
         }
         .task { await store.loadMessages(for: conversationID) }
+        // Pushes for the thread on screen stay quiet.
+        .onAppear { PushManager.shared.activeConversation = conversationID }
+        .onDisappear {
+            if PushManager.shared.activeConversation == conversationID {
+                PushManager.shared.activeConversation = nil
+            }
+        }
         .fullScreenCover(item: $viewing) { message in
             PhotoViewer(message: message, canDelete: message.isFromMe(session.userID)) {
                 viewing = nil
