@@ -15,6 +15,7 @@ final class ChatStore: ObservableObject {
     private let client = Backend.client
     private let imageCache = NSCache<NSString, UIImage>()
     private var realtime: Task<Void, Never>?
+    private var deletions: Task<Void, Never>?
     private var membership: Task<Void, Never>?
 
     /// Pinned first (in the order they were pinned), then most recent activity.
@@ -225,6 +226,40 @@ final class ChatStore: ObservableObject {
         return image
     }
 
+    // MARK: - Deleting
+
+    /// Delete one of your own messages for everyone. The photo file goes
+    /// first (its storage policy needs the message row to still exist),
+    /// then the row. Returns false if the server refused.
+    func delete(_ message: Message) async -> Bool {
+        do {
+            if let path = message.photoPath {
+                _ = try await client.storage.from("snaps").remove(paths: [path])
+                imageCache.removeObject(forKey: path as NSString)
+            }
+            try await client
+                .from("messages")
+                .delete()
+                .eq("id", value: message.id.uuidString)
+                .execute()
+            remove(messageID: message.id)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// Drop a message from wherever it's held; if it was a chat's preview,
+    /// re-pull the list so the preview falls back to the one before it.
+    private func remove(messageID: Message.ID) {
+        for (cid, thread) in messages where thread.contains(where: { $0.id == messageID }) {
+            messages[cid] = thread.filter { $0.id != messageID }
+        }
+        if conversations.contains(where: { $0.lastMessage?.id == messageID }) {
+            Task { await refresh() }
+        }
+    }
+
     // MARK: - Realtime
 
     func startRealtime() {
@@ -232,7 +267,19 @@ final class ChatStore: ObservableObject {
         realtime = Task { [weak self] in
             let channel = Backend.client.channel("messages")
             let inserts = channel.postgresChange(InsertAction.self, schema: "public", table: "messages")
+            let deletes = channel.postgresChange(DeleteAction.self, schema: "public", table: "messages")
             guard (try? await channel.subscribeWithError()) != nil else { return }
+
+            // A delete only carries the old row's primary key.
+            deletions = Task { [weak self] in
+                struct Key: Decodable { let id: UUID }
+                for await delete in deletes {
+                    guard let self,
+                          let key = try? delete.decodeOldRecord(as: Key.self, decoder: Backend.decoder)
+                    else { continue }
+                    self.remove(messageID: key.id)
+                }
+            }
 
             for await insert in inserts {
                 guard let self,
@@ -257,6 +304,8 @@ final class ChatStore: ObservableObject {
     func stopRealtime() {
         realtime?.cancel()
         realtime = nil
+        deletions?.cancel()
+        deletions = nil
         membership?.cancel()
         membership = nil
     }

@@ -60,7 +60,7 @@ fixes). Bump `CURRENT_PROJECT_VERSION` in project.yml before each upload. Upload
 -exportArchive` with `build/ExportOptions.plist` (method app-store-connect,
 destination upload). App record exists in App Store Connect as "Groupy".
 
-Migrations applied on the live project: friend requests (09-18), groups (09-20), pins (09-20). Add-members (`2026-09-20-add-members.sql`) must be run in the SQL editor before "Add Members" works.
+Migrations applied on the live project: friend requests (09-18), groups (09-20), pins (09-20). add-members (09-20). Delete-messages (`2026-09-20-delete-messages.sql`: sender delete policies on messages + storage) must be run in the SQL editor before Delete works.
 Test accounts to delete under Authentication → Users: `probe-1789526196@…`,
 `probe2-…@chatsnap-probe.io`. There is a real group "Groupy Test" between Nalin
 and Probe from verification; leave it from the app.

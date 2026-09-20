@@ -11,6 +11,8 @@ struct ConversationScreen: View {
     @State private var viewing: Message?
     @State private var isShowingMembers = false
     @State private var isShootingSnap = false
+    @State private var deleting: Message?
+    @State private var deleteFailed = false
     @State private var pickedPhoto: PhotosPickerItem?
     @State private var isSendingPhoto = false
     @FocusState private var isComposing: Bool
@@ -54,7 +56,29 @@ struct ConversationScreen: View {
         }
         .task { await store.loadMessages(for: conversationID) }
         .fullScreenCover(item: $viewing) { message in
-            PhotoViewer(message: message)
+            PhotoViewer(message: message, canDelete: message.isFromMe(session.userID)) {
+                viewing = nil
+                deleting = message
+            }
+        }
+        .confirmationDialog(
+            "Delete this \(deleting?.kind == .photo ? "photo" : "message")?",
+            isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete for Everyone", role: .destructive) {
+                guard let message = deleting else { return }
+                deleting = nil
+                Task { deleteFailed = !(await store.delete(message)) }
+            }
+            Button("Cancel", role: .cancel) { deleting = nil }
+        } message: {
+            Text("It disappears from the chat for everyone in it.")
+        }
+        .alert("Couldn't delete", isPresented: $deleteFailed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Check your connection and try again.")
         }
         .fullScreenCover(isPresented: $isShootingSnap) {
             ThreadCameraScreen(conversationID: conversationID) {
@@ -95,6 +119,14 @@ struct ConversationScreen: View {
                             senderName: (conversation?.isGroup == true && !mine && startsRun) ? conversation?.senderName(of: message) : nil
                         ) {
                             viewing = message
+                        }
+                        .contextMenu {
+                            // Only your own. Others' messages aren't yours to remove.
+                            if mine {
+                                Button(role: .destructive) { deleting = message } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
                         }
                         .id(message.id)
                     }
@@ -293,6 +325,8 @@ struct SnapImage: View {
 private struct PhotoViewer: View {
     @Environment(\.dismiss) private var dismiss
     let message: Message
+    var canDelete = false
+    var onDelete: () -> Void = {}
 
     var body: some View {
         ZStack {
@@ -312,6 +346,16 @@ private struct PhotoViewer: View {
                     }
                     .buttonStyle(.plain)
                     Spacer()
+                    if canDelete {
+                        Button(action: onDelete) {
+                            Image(systemName: "trash")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 44, height: 44)
+                                .background(.black.opacity(0.35), in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 12)
