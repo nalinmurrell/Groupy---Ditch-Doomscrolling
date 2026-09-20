@@ -17,3 +17,7 @@ android/.kotlin/
 .DS_Store
 Thumbs.db
 .vscode/
+
+# Supabase CLI state and any APNs keys
+supabase/.temp/
+*.p8
