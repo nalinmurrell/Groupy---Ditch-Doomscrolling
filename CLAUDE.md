@@ -55,8 +55,9 @@ single JSON object" and sessions not surviving relaunch). Verified fixed.
 
 Runs on Nalin's iPhone 15 Pro (`xcrun devicectl device install app --device
 A7CC0985-B5CD-5979-8F88-8879F0E3C4F7 …`, then `process launch`). TestFlight:
-build 1 (2026-09-18), build 2 (2026-09-20, has groups/pins/friend-request
-fixes). Bump `CURRENT_PROJECT_VERSION` in project.yml before each upload. Uploaded via `xcodebuild
+build 1 (2026-09-18), build 2 (2026-09-20, groups/pins/friend-request
+fixes), build 3 (2026-09-20, push, add members, delete, camera roll, in-thread
+camera, Return-to-send, timestamps). Bump `CURRENT_PROJECT_VERSION` in project.yml before each upload. Uploaded via `xcodebuild
 -exportArchive` with `build/ExportOptions.plist` (method app-store-connect,
 destination upload). App record exists in App Store Connect as "Groupy".
 
