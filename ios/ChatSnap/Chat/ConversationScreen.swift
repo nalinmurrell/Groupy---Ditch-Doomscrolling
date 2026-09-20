@@ -11,6 +11,7 @@ struct ConversationScreen: View {
     @State private var isShowingMembers = false
     @State private var pickedPhoto: PhotosPickerItem?
     @State private var isSendingPhoto = false
+    @FocusState private var isComposing: Bool
     @Environment(\.dismiss) private var dismiss
 
     private var conversation: Conversation? { store.conversation(conversationID) }
@@ -106,10 +107,13 @@ struct ConversationScreen: View {
 
     private var composer: some View {
         HStack(spacing: 10) {
-            TextField("Send a message", text: $draft, axis: .vertical)
+            // Single line so Return means send. (A multiline field turns
+            // Return into a newline and never submits.)
+            TextField("Send a message", text: $draft)
                 .textFieldStyle(.plain)
                 .submitLabel(.send)
-                .lineLimit(1...4)
+                .focused($isComposing)
+                .onSubmit(send)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 9)
                 .background(.white.opacity(0.1), in: Capsule())
@@ -138,20 +142,6 @@ struct ConversationScreen: View {
                 pickedPhoto = nil
                 Task { await sendPicked(item) }
             }
-
-            Button {
-                let text = draft
-                draft = ""
-                Task { await store.send(text: text, to: conversationID) }
-            } label: {
-                Image(systemName: "paperplane.fill")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(canSend ? .black : .white.opacity(0.3))
-                    .frame(width: 36, height: 36)
-                    .background(canSend ? Color.white : Color.white.opacity(0.1), in: Circle())
-            }
-            .buttonStyle(.plain)
-            .disabled(!canSend)
         }
         .padding(.horizontal, 14)
         .padding(.top, 8)
@@ -159,8 +149,13 @@ struct ConversationScreen: View {
         .background(Color.black)
     }
 
-    private var canSend: Bool {
-        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    private func send() {
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        draft = ""
+        // Return would otherwise drop the keyboard; keep the conversation going.
+        isComposing = true
+        Task { await store.send(text: text, to: conversationID) }
     }
 
     /// A library photo goes straight into this thread — no review step, you
