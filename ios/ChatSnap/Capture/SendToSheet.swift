@@ -60,19 +60,17 @@ struct SendToSheet: View {
 
     private func row(_ conversation: Conversation) -> some View {
         HStack(spacing: 14) {
-            if let who = conversation.counterpart(for: session.userID) {
-                Avatar(subject: who)
-            }
+            Avatar(subject: conversation.avatarSubject(for: session.userID))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(conversation.title(for: session.userID))
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.white)
-                if let who = conversation.counterpart(for: session.userID), !conversation.isGroup {
-                    Text("@\(who.username)")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.white.opacity(0.45))
-                }
+                Text(conversation.isGroup
+                     ? "\(conversation.members.count) members"
+                     : "@\(conversation.counterpart(for: session.userID)?.username ?? "")")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.white.opacity(0.45))
             }
 
             Spacer()

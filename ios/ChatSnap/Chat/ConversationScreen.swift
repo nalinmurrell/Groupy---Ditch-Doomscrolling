@@ -7,6 +7,8 @@ struct ConversationScreen: View {
 
     @State private var draft = ""
     @State private var viewing: Message?
+    @State private var isConfirmingLeave = false
+    @Environment(\.dismiss) private var dismiss
 
     private var conversation: Conversation? { store.conversation(conversationID) }
     private var thread: [Message] { store.messages[conversationID] ?? [] }
@@ -19,6 +21,30 @@ struct ConversationScreen: View {
         .background(Color.black)
         .navigationTitle(conversation?.title(for: session.userID) ?? "Chat")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if conversation?.isGroup == true {
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Button("Leave Group", role: .destructive) { isConfirmingLeave = true }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.white)
+                    }
+                }
+            }
+        }
+        .confirmationDialog("Leave \(conversation?.name ?? "this group")?", isPresented: $isConfirmingLeave, titleVisibility: .visible) {
+            Button("Leave Group", role: .destructive) {
+                Task {
+                    await store.leaveGroup(conversationID)
+                    dismiss()
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("You'll stop getting messages from it. Someone can add you back.")
+        }
         .task { await store.loadMessages(for: conversationID) }
         .fullScreenCover(item: $viewing) { message in
             PhotoViewer(message: message)
@@ -29,8 +55,16 @@ struct ConversationScreen: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 10) {
-                    ForEach(thread) { message in
-                        MessageRow(message: message, isFromMe: message.isFromMe(session.userID)) {
+                    ForEach(Array(thread.enumerated()), id: \.element.id) { index, message in
+                        let mine = message.isFromMe(session.userID)
+                        // In a group, label the first message of each run from
+                        // someone else — not every bubble, that's noise.
+                        let startsRun = index == 0 || thread[index - 1].senderID != message.senderID
+                        MessageRow(
+                            message: message,
+                            isFromMe: mine,
+                            senderName: (conversation?.isGroup == true && !mine && startsRun) ? conversation?.senderName(of: message) : nil
+                        ) {
                             viewing = message
                         }
                         .id(message.id)
@@ -93,9 +127,22 @@ struct ConversationScreen: View {
 private struct MessageRow: View {
     let message: Message
     let isFromMe: Bool
+    var senderName: String? = nil
     let onOpenPhoto: () -> Void
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            if let senderName {
+                Text(senderName)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .padding(.leading, 6)
+            }
+            bubble
+        }
+    }
+
+    private var bubble: some View {
         HStack {
             if isFromMe { Spacer(minLength: 60) }
 

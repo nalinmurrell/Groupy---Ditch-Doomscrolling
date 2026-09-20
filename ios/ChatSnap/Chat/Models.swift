@@ -73,15 +73,43 @@ struct Conversation: Identifiable, Hashable {
         members.first { $0.id != me } ?? members.first
     }
 
+    /// What to draw in the avatar circle: the other person, or the group.
+    func avatarSubject(for me: UUID?) -> any AvatarRepresentable {
+        if isGroup { return GroupIdentity(displayName: name ?? "Group", username: id.uuidString) }
+        return counterpart(for: me) ?? GroupIdentity(displayName: "?", username: id.uuidString)
+    }
+
+    func member(_ id: UUID) -> Profile? {
+        members.first { $0.id == id }
+    }
+
+    /// First name of whoever sent this, for labelling group messages.
+    func senderName(of message: Message) -> String {
+        member(message.senderID)?.displayName.split(separator: " ").first.map(String.init) ?? "Someone"
+    }
+
     /// The one line under the name in the chat list.
     func statusLine(for me: UUID?) -> String {
-        guard let last = lastMessage else { return "Tap to chat" }
+        guard let last = lastMessage else { return isGroup ? "\(members.count) members" : "Tap to chat" }
         let mine = last.isFromMe(me)
+        let who = isGroup && !mine ? senderName(of: last) : nil
         switch last.kind {
-        case .photo: return mine ? "Sent" : "New Snap"
-        case .text:  return mine ? "You: \(last.body ?? "")" : (last.body ?? "")
+        case .photo:
+            if mine { return "Sent" }
+            return who.map { "New Snap from \($0)" } ?? "New Snap"
+        case .text:
+            let body = last.body ?? ""
+            if mine { return "You: \(body)" }
+            return who.map { "\($0): \(body)" } ?? body
         }
     }
+}
+
+/// Lets a group wear an avatar like a person does: initials of its name,
+/// colour keyed to its id.
+struct GroupIdentity: AvatarRepresentable {
+    let displayName: String
+    let username: String
 }
 
 // MARK: - Wire shapes

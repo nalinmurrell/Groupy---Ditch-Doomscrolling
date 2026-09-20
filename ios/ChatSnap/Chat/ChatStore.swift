@@ -15,6 +15,7 @@ final class ChatStore: ObservableObject {
     private let client = Backend.client
     private let imageCache = NSCache<NSString, UIImage>()
     private var realtime: Task<Void, Never>?
+    private var membership: Task<Void, Never>?
 
     /// Most recent activity first.
     var sortedConversations: [Conversation] {
@@ -138,6 +139,35 @@ final class ChatStore: ObservableObject {
         return id
     }
 
+    // MARK: - Groups
+
+    /// Server validates everything (name length, members are friends) and
+    /// creates the room + memberships in one transaction.
+    func createGroup(named name: String, with members: [Profile]) async -> Conversation.ID? {
+        struct Params: Encodable {
+            let group_name: String
+            let member_ids: [UUID]
+        }
+        do {
+            let id: UUID = try await client
+                .rpc("create_group", params: Params(group_name: name, member_ids: members.map(\.id)))
+                .execute()
+                .value
+            await refresh()
+            return id
+        } catch {
+            return nil
+        }
+    }
+
+    func leaveGroup(_ id: Conversation.ID) async {
+        struct Params: Encodable { let cid: UUID }
+        _ = try? await client.rpc("leave_group", params: Params(cid: id)).execute()
+        messages[id] = nil
+        conversations.removeAll { $0.id == id }
+        await refresh()
+    }
+
     // MARK: - Photos
 
     func image(for message: Message) async -> UIImage? {
@@ -152,7 +182,7 @@ final class ChatStore: ObservableObject {
     // MARK: - Realtime
 
     func startRealtime() {
-        realtime?.cancel()
+        stopRealtime()
         realtime = Task { [weak self] in
             let channel = Backend.client.channel("messages")
             let inserts = channel.postgresChange(InsertAction.self, schema: "public", table: "messages")
@@ -165,11 +195,24 @@ final class ChatStore: ObservableObject {
                 self.receive(message)
             }
         }
+        // Being added to (or removed from) a group changes the list itself.
+        membership = Task { [weak self] in
+            let channel = Backend.client.channel("membership")
+            let changes = channel.postgresChange(AnyAction.self, schema: "public", table: "conversation_members")
+            guard (try? await channel.subscribeWithError()) != nil else { return }
+
+            for await _ in changes {
+                guard let self else { return }
+                await self.refresh()
+            }
+        }
     }
 
     func stopRealtime() {
         realtime?.cancel()
         realtime = nil
+        membership?.cancel()
+        membership = nil
     }
 
     private func receive(_ message: Message) {

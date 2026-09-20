@@ -59,12 +59,17 @@ TestFlight build (1.0 build 1) uploaded 2026-09-18 via `xcodebuild
 -exportArchive` with `build/ExportOptions.plist` (method app-store-connect,
 destination upload). App record exists in App Store Connect as "Groupy".
 
-**Pending:** the friend-request migration
-(`supabase/migrations/2026-09-18-friend-requests.sql`) must be run on the live
-project before Add/Accept does anything — check with a call to
-`send_friend_request`; PGRST202 means not yet.
+Migrations applied on the live project: friend requests (09-18), groups (09-20).
+Test accounts to delete under Authentication → Users: `probe-1789526196@…`,
+`probe2-…@chatsnap-probe.io`. There is a real group "Groupy Test" between Nalin
+and Probe from verification; leave it from the app.
 
-Not yet built anywhere: group creation UI, push notifications (needs the Push
+Groups: `create_group(name, member_ids)` (members must be accepted friends,
+enforced server-side) and `leave_group(cid)`; `conversation_members` is on
+realtime so being added shows up live. UI: New Group button on the chat list,
+sender names on the first message of each run in group threads, Leave via ⋯.
+
+Not yet built anywhere: push notifications (needs the Push
 capability on the App ID + APNs key in Supabase), read receipts
 (`isOpened` was dropped when moving to Supabase), Sign in with Apple, ephemeral
 "tap to view" snaps (photos are plain inline thumbnails for now).

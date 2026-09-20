@@ -5,12 +5,14 @@ struct ChatListScreen: View {
     @EnvironmentObject private var session: SessionStore
     @Binding var path: [Conversation.ID]
 
+    @State private var isCreatingGroup = false
+
     var body: some View {
         NavigationStack(path: $path) {
             ScrollView {
                 LazyVStack(spacing: 0) {
                     if store.conversations.isEmpty {
-                        Text("Add a friend and your chat with them shows up here.")
+                        Text("Add a friend, or start a group, and it shows up here.")
                             .font(.system(size: 15))
                             .foregroundStyle(.white.opacity(0.4))
                             .multilineTextAlignment(.center)
@@ -33,6 +35,20 @@ struct ChatListScreen: View {
             .background(Color.black)
             .navigationTitle("Chats")
             .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button { isCreatingGroup = true } label: {
+                        Image(systemName: "person.2.badge.plus")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(.white)
+                    }
+                    .accessibilityLabel("New Group")
+                }
+            }
+            .sheet(isPresented: $isCreatingGroup) {
+                NewGroupSheet { id in path = [id] }
+                    .preferredColorScheme(.dark)
+            }
             .navigationDestination(for: Conversation.ID.self) { id in
                 ConversationScreen(conversationID: id)
             }
@@ -46,9 +62,7 @@ private struct ChatRow: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            if let who = conversation.counterpart(for: me) {
-                Avatar(subject: who)
-            }
+            Avatar(subject: conversation.avatarSubject(for: me))
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(conversation.title(for: me))
