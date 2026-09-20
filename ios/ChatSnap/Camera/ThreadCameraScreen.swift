@@ -15,8 +15,6 @@ struct ThreadCameraScreen: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
-
             if let snap = camera.snap {
                 review(snap)
             } else {
@@ -40,6 +38,10 @@ struct ThreadCameraScreen: View {
 
     private var live: some View {
         ZStack {
+            // Own backdrop, so the whole card slides and the thread shows
+            // through underneath (the cover's background is clear).
+            Color.black.ignoresSafeArea()
+
             Group {
                 if camera.usesSimulatorFeed {
                     SimulatorFeed()
@@ -117,6 +119,8 @@ struct ThreadCameraScreen: View {
 
     private func review(_ snap: Snap) -> some View {
         ZStack {
+            Color.black.ignoresSafeArea()
+
             Color.clear
                 .overlay {
                     Image(uiImage: snap.image)

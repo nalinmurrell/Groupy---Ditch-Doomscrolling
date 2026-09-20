@@ -62,6 +62,9 @@ struct ConversationScreen: View {
             }
             .environmentObject(camera)
             .environmentObject(store)
+            // Keep the thread visible under the camera so a swipe-down
+            // reveals it rather than a black void.
+            .presentationBackground(.clear)
         }
     }
 
