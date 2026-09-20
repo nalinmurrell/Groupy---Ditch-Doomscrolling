@@ -10,6 +10,8 @@ struct ThreadCameraScreen: View {
 
     @State private var isSending = false
     @State private var isShown = false
+    /// The viewfinder follows a downward drag; far enough and it's dismissed.
+    @State private var dragOffset: CGFloat = 0
 
     var body: some View {
         ZStack {
@@ -19,6 +21,8 @@ struct ThreadCameraScreen: View {
                 review(snap)
             } else {
                 live
+                    .offset(y: dragOffset)
+                    .gesture(swipeDown)
             }
         }
         .statusBarHidden()
@@ -84,6 +88,26 @@ struct ThreadCameraScreen: View {
                 .padding(.bottom, 36)
             }
         }
+    }
+
+    private var swipeDown: some Gesture {
+        DragGesture(minimumDistance: 20)
+            .onChanged { value in
+                dragOffset = max(0, value.translation.height)
+            }
+            .onEnded { value in
+                let flung = value.predictedEndTranslation.height > 260
+                if value.translation.height > 120 || flung {
+                    withAnimation(.easeIn(duration: 0.18)) {
+                        dragOffset = UIScreen.main.bounds.height
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.18, execute: onClose)
+                } else {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        dragOffset = 0
+                    }
+                }
+            }
     }
 
     private func close() {
