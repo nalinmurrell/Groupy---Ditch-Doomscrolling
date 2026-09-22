@@ -91,7 +91,7 @@ struct ShutterButton: View {
     let onHoldEnded: () -> Void
 
     /// Held longer than this and it's a video, not a photo.
-    private let holdThreshold: TimeInterval = 0.2
+    private let holdThreshold: TimeInterval = 0.12
 
     @State private var pressStart: Date?
     @State private var isHolding = false
