@@ -93,6 +93,8 @@ struct RootView: View {
         .task(id: isReady) {
             guard isReady else { return }
             push.enable()
+            // A tap that cold-started the app was recorded before we appeared.
+            if let id = push.pendingConversation { open(id) }
             chats.startRealtime()
             // Accepting a request opens a DM, so friend changes ripple to chats.
             friends.onRemoteChange = { [weak chats] in await chats?.refresh() }
@@ -107,12 +109,15 @@ struct RootView: View {
         }
         // A tapped notification lands in its thread.
         .onChange(of: push.pendingConversation) { _, id in
-            guard let id else { return }
-            push.pendingConversation = nil
-            withoutAnimation {
-                tab = .chat
-                openConversations = [id]
-            }
+            if let id { open(id) }
+        }
+    }
+
+    private func open(_ id: Conversation.ID) {
+        push.pendingConversation = nil
+        withoutAnimation {
+            tab = .chat
+            openConversations = [id]
         }
     }
 }

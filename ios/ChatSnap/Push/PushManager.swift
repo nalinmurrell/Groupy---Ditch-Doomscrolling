@@ -20,7 +20,6 @@ final class PushManager: NSObject, ObservableObject {
 
     /// Ask once we know who the user is. Silent if already decided.
     func enable() {
-        UNUserNotificationCenter.current().delegate = self
         Task {
             let granted = (try? await UNUserNotificationCenter.current()
                 .requestAuthorization(options: [.alert, .sound, .badge])) ?? false
@@ -73,22 +72,30 @@ final class PushManager: NSObject, ObservableObject {
 }
 
 extension PushManager: UNUserNotificationCenterDelegate {
+    // The completion-handler forms, not the async ones: UIKit asserts if the
+    // completion arrives off the main thread, and Swift concurrency resumes
+    // the async variants wherever it likes. These are delivered on main.
+
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
-        willPresent notification: UNNotification
-    ) async -> UNNotificationPresentationOptions {
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
         let id = Self.conversationID(in: notification.request.content.userInfo)
-        let active = await MainActor.run { PushManager.shared.activeConversation }
+        let active = MainActor.assumeIsolated { PushManager.shared.activeConversation }
         // Already reading that thread — the message just appears.
-        return id != nil && id == active ? [] : [.banner, .sound]
+        completionHandler(id != nil && id == active ? [] : [.banner, .sound])
     }
 
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
-        didReceive response: UNNotificationResponse
-    ) async {
-        guard let id = Self.conversationID(in: response.notification.request.content.userInfo) else { return }
-        await MainActor.run { PushManager.shared.pendingConversation = id }
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        if let id = Self.conversationID(in: response.notification.request.content.userInfo) {
+            MainActor.assumeIsolated { PushManager.shared.pendingConversation = id }
+        }
+        completionHandler()
     }
 
     private nonisolated static func conversationID(in userInfo: [AnyHashable: Any]) -> Conversation.ID? {
@@ -98,6 +105,15 @@ extension PushManager: UNUserNotificationCenterDelegate {
 
 /// UIKit's entry points for remote-notification registration.
 final class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        // Set before launch finishes, or a tap that cold-starts the app is lost.
+        UNUserNotificationCenter.current().delegate = PushManager.shared
+        return true
+    }
+
     func application(
         _ application: UIApplication,
         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
