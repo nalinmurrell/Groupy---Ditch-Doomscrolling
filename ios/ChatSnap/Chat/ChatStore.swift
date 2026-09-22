@@ -103,10 +103,14 @@ final class ChatStore: ObservableObject {
                     .upload(path, data: data, options: FileOptions(contentType: "image/jpeg"))
                 imageCache.setObject(snap.image, forKey: path as NSString)
 
-                try await client
+                let sent: Message = try await client
                     .from("messages")
                     .insert(NewMessage(conversationID: id, kind: .photo, body: nil, photoPath: path))
+                    .select()
+                    .single()
                     .execute()
+                    .value
+                receive(sent)
             } catch {
                 continue
             }
@@ -116,10 +120,18 @@ final class ChatStore: ObservableObject {
     func send(text: String, to conversationID: Conversation.ID) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        _ = try? await client
+        // Show it from the server's own row, not a guess: realtime echoes it
+        // back too, but the echo can't be relied on after a stint in the
+        // background. `receive` dedupes.
+        guard let sent: Message = try? await client
             .from("messages")
             .insert(NewMessage(conversationID: conversationID, kind: .text, body: trimmed, photoPath: nil))
+            .select()
+            .single()
             .execute()
+            .value
+        else { return }
+        receive(sent)
     }
 
     /// Insert payload. `sender_id` comes from the signed-in user; RLS rejects

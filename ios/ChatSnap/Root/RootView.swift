@@ -53,7 +53,13 @@ struct RootView: View {
             switch phase {
             case .active:
                 camera.resume()
-                if isReady { Task { await chats.refresh() } }
+                if isReady {
+                    // Sockets don't survive the background reliably; re-subscribe
+                    // rather than trust the reconnect, then fill the gap.
+                    chats.startRealtime()
+                    friends.startRealtime()
+                    Task { await chats.refresh() }
+                }
             case .background:
                 camera.suspend()
             default:
