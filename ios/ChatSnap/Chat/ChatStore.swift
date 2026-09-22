@@ -56,6 +56,17 @@ final class ChatStore: ObservableObject {
                 .value
             let me = client.auth.currentUser?.id
             conversations = rows.map { $0.conversation(for: me) }
+
+            // Realtime sleeps while the app is in the background, so a loaded
+            // thread can be missing messages the list already knows about.
+            // Re-pull just those threads.
+            for conversation in conversations {
+                guard let last = conversation.lastMessage,
+                      let thread = messages[conversation.id],
+                      !thread.contains(where: { $0.id == last.id })
+                else { continue }
+                await loadMessages(for: conversation.id)
+            }
         } catch {
             // Keep whatever we had; the list just goes stale until next pull.
         }

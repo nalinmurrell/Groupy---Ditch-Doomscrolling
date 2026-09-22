@@ -119,5 +119,8 @@ struct RootView: View {
             tab = .chat
             openConversations = [id]
         }
+        // The thread may already be on screen with a stale cache; the push
+        // itself is proof there's something new.
+        Task { await chats.loadMessages(for: id) }
     }
 }
