@@ -70,9 +70,9 @@ struct CameraScreen: View {
                 isCapturing: camera.isCapturing,
                 isRecording: camera.isRecording,
                 isEnabled: camera.status == .running && session.me != nil,
-                onTap: camera.capture,
-                onHoldBegan: camera.startRecording,
-                onHoldEnded: camera.stopRecording
+                onPressBegan: camera.pressBegan,
+                onHold: camera.holdConfirmed,
+                onPressEnded: camera.pressEnded
             )
             .padding(.bottom, AppTabBar.height + 24)
         }
@@ -86,12 +86,13 @@ struct ShutterButton: View {
     let isRecording: Bool
     /// Off while the camera warms up or the session is still being restored.
     let isEnabled: Bool
-    let onTap: () -> Void
-    let onHoldBegan: () -> Void
-    let onHoldEnded: () -> Void
+    let onPressBegan: () -> Void
+    let onHold: () -> Void
+    let onPressEnded: () -> Void
 
-    /// Held longer than this and it's a video, not a photo.
-    private let holdThreshold: TimeInterval = 0.12
+    /// Held longer than this and it's a video, not a photo. Recording is
+    /// already rolling by then, so this only decides which one you get.
+    private let holdThreshold: TimeInterval = 0.2
 
     @State private var pressStart: Date?
     @State private var isHolding = false
@@ -120,24 +121,24 @@ struct ShutterButton: View {
         .allowsHitTesting(isEnabled && !isCapturing)
     }
 
-    /// One gesture, two outcomes: released early is a tap (photo); still
-    /// down past the threshold starts a recording that ends on release.
+    /// Touch-down starts things, the threshold makes it a hold, release
+    /// ends it; the controller sorts out photo vs video.
     private var press: some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { _ in
                 guard pressStart == nil else { return }
                 pressStart = Date()
+                onPressBegan()
                 DispatchQueue.main.asyncAfter(deadline: .now() + holdThreshold) {
                     guard pressStart != nil, !isHolding else { return }
                     isHolding = true
-                    onHoldBegan()
+                    onHold()
                 }
             }
             .onEnded { _ in
-                let held = isHolding
                 pressStart = nil
                 isHolding = false
-                if held { onHoldEnded() } else { onTap() }
+                onPressEnded()
             }
     }
 }

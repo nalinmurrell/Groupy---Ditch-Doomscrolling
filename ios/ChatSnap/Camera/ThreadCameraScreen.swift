@@ -88,9 +88,9 @@ struct ThreadCameraScreen: View {
                     isCapturing: camera.isCapturing,
                     isRecording: camera.isRecording,
                     isEnabled: camera.status == .running,
-                    onTap: camera.capture,
-                    onHoldBegan: camera.startRecording,
-                    onHoldEnded: camera.stopRecording
+                    onPressBegan: camera.pressBegan,
+                    onHold: camera.holdConfirmed,
+                    onPressEnded: camera.pressEnded
                 )
                 .padding(.bottom, 36)
             }

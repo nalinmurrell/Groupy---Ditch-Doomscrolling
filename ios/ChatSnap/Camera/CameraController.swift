@@ -41,8 +41,6 @@ final class CameraController: NSObject, ObservableObject {
     private let photoOutput = AVCapturePhotoOutput()
     private let movieOutput = AVCaptureMovieFileOutput()
     private var audioInput: AVCaptureDeviceInput?
-    /// Snapchat-ish cap; keeps a clip well under the upload limit.
-    nonisolated static let maxVideoSeconds: Double = 15
     private var videoInput: AVCaptureDeviceInput?
     private var isConfigured = false
 
@@ -263,37 +261,35 @@ final class CameraController: NSObject, ObservableObject {
         }
     }
 
-    // MARK: - Video
+    // MARK: - Shutter press
 
-    /// Hold-to-record. Asks for the mic the first time; a "no" just means
-    /// silent clips.
-    func startRecording() {
-        guard status == .running, !isCapturing, !isRecording else { return }
+    // Snapchat's trick: the recorder starts the moment the finger lands, so
+    // a hold loses nothing to spin-up. Lift before the threshold and the
+    // clip is binned and a photo taken instead. File state below lives on
+    // the session queue.
+    private var isPressed = false
+    private var fileCancelled = false
+    private var fileDiscard = false
+    /// Snapchat-ish cap; keeps a clip well under the upload limit.
+    nonisolated static let maxVideoSeconds: Double = 15
+
+    func pressBegan() {
+        guard status == .running, !isCapturing, !isRecording, !isPressed else { return }
+        isPressed = true
+        guard !usesSimulatorFeed else { return }
+        // Only if the mic question is already settled; a first-ever tap
+        // shouldn't pop a permission prompt.
+        if AVCaptureDevice.authorizationStatus(for: .audio) != .notDetermined {
+            beginFile()
+        }
+    }
+
+    /// The press crossed the threshold: it's a video now.
+    func holdConfirmed() {
+        guard isPressed else { return }
         isRecording = true
-
-        if usesSimulatorFeed {
-            // No capture hardware: fake a short clip so the flow can be exercised.
-            Task { @MainActor [weak self] in
-                try? await Task.sleep(for: .seconds(1))
-                guard let self, self.isRecording else { return }
-                self.isRecording = false
-                if let url = SimulatorFeed.clip() { self.snap = Snap(videoURL: url) }
-            }
-            return
-        }
-
-        let begin = { [weak self] in
-            guard let self else { return }
-            self.sessionQueue.async {
-                let url = FileManager.default.temporaryDirectory
-                    .appendingPathComponent(UUID().uuidString)
-                    .appendingPathExtension("mov")
-                self.movieOutput.startRecording(to: url, recordingDelegate: self)
-            }
-        }
-
-        switch AVCaptureDevice.authorizationStatus(for: .audio) {
-        case .notDetermined:
+        guard !usesSimulatorFeed else { return }
+        if AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined {
             AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
                 guard let self else { return }
                 self.sessionQueue.async {
@@ -303,25 +299,54 @@ final class CameraController: NSObject, ObservableObject {
                         self.session.commitConfiguration()
                         self.orientMovieConnection(mirrored: self.videoInput?.device.position == .front)
                     }
-                    // The user may have let go during the prompt.
-                    DispatchQueue.main.async { if self.isRecording { begin() } }
+                    // Still held after the prompt? Then record.
+                    DispatchQueue.main.async { if self.isPressed { self.beginFile() } }
                 }
             }
-        default:
-            begin()
         }
     }
 
-    func stopRecording() {
-        guard isRecording else { return }
-        if usesSimulatorFeed { return } // the fake clip finishes on its own
-        sessionQueue.async { [weak self] in
-            guard let self, self.movieOutput.isRecording else {
-                // Let go before recording actually began (e.g. mic prompt).
-                self?.publish { $0.isRecording = false }
-                return
+    func pressEnded() {
+        guard isPressed else { return }
+        isPressed = false
+        if isRecording {
+            if usesSimulatorFeed {
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.isRecording = false
+                    if let url = SimulatorFeed.clip() { self.snap = Snap(videoURL: url) }
+                }
+            } else {
+                endFile(discard: false)
             }
-            self.movieOutput.stopRecording()
+        } else {
+            if !usesSimulatorFeed { endFile(discard: true) }
+            capture()
+        }
+    }
+
+    private func beginFile() {
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            self.fileCancelled = false
+            self.fileDiscard = false
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathExtension("mov")
+            self.movieOutput.startRecording(to: url, recordingDelegate: self)
+        }
+    }
+
+    private func endFile(discard: Bool) {
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            self.fileDiscard = discard
+            if self.movieOutput.isRecording {
+                self.movieOutput.stopRecording()
+            } else {
+                // Asked to start but not rolling yet; stop it as soon as it is.
+                self.fileCancelled = true
+            }
         }
     }
 
@@ -356,6 +381,18 @@ final class CameraController: NSObject, ObservableObject {
 extension CameraController: AVCaptureFileOutputRecordingDelegate {
     func fileOutput(
         _ output: AVCaptureFileOutput,
+        didStartRecordingTo fileURL: URL,
+        from connections: [AVCaptureConnection]
+    ) {
+        sessionQueue.async { [weak self] in
+            guard let self, self.fileCancelled else { return }
+            self.fileCancelled = false
+            self.movieOutput.stopRecording()
+        }
+    }
+
+    func fileOutput(
+        _ output: AVCaptureFileOutput,
         didFinishRecordingTo outputFileURL: URL,
         from connections: [AVCaptureConnection],
         error: Error?
@@ -363,9 +400,11 @@ extension CameraController: AVCaptureFileOutputRecordingDelegate {
         // Hitting the duration cap reports as an error but the file is fine.
         let usable = error == nil
             || (error as NSError?)?.userInfo[AVErrorRecordingSuccessfullyFinishedKey] as? Bool == true
+        let discard = fileDiscard
+        if discard || !usable { try? FileManager.default.removeItem(at: outputFileURL) }
         publish {
             $0.isRecording = false
-            if usable { $0.snap = Snap(videoURL: outputFileURL) }
+            if usable && !discard { $0.snap = Snap(videoURL: outputFileURL) }
         }
     }
 }
