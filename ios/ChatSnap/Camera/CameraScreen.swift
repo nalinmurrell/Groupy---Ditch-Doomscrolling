@@ -20,6 +20,8 @@ struct CameraScreen: View {
             }
             .ignoresSafeArea()
             .opacity(camera.status == .running ? 1 : 0)
+            // Snapchat muscle memory: double-tap the viewfinder to flip.
+            .onTapGesture(count: 2) { camera.flipCamera() }
 
             switch camera.status {
             case .denied:
