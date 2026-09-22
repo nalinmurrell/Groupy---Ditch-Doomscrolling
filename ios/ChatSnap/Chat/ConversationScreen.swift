@@ -69,7 +69,7 @@ struct ConversationScreen: View {
             }
         }
         .confirmationDialog(
-            "Delete this \(deleting?.kind == .photo ? "photo" : "message")?",
+            "Delete this \(deleting?.kind == .text ? "message" : deleting?.kind == .video ? "video" : "photo")?",
             isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
             titleVisibility: .visible
         ) {
@@ -299,6 +299,21 @@ private struct MessageRow: View {
                         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                 }
                 .buttonStyle(.plain)
+
+            case .video:
+                Button(action: onOpenPhoto) {
+                    SnapImage(message: message)
+                        .frame(width: 160, height: 240)
+                        .overlay {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 22, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 52, height: 52)
+                                .background(.black.opacity(0.4), in: Circle())
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                }
+                .buttonStyle(.plain)
             }
 
             if !isFromMe { Spacer(minLength: 60) }
@@ -325,7 +340,9 @@ struct SnapImage: View {
                     .overlay { ProgressView().tint(.white.opacity(0.5)) }
             }
         }
-        .task(id: message.id) { image = await store.image(for: message) }
+        .task(id: message.id) {
+            image = message.kind == .video ? await store.thumbnail(for: message) : await store.image(for: message)
+        }
     }
 }
 
@@ -339,8 +356,13 @@ private struct PhotoViewer: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            SnapImage(message: message, contentMode: .fit)
-                .ignoresSafeArea()
+            if message.kind == .video {
+                VideoMessagePlayer(message: message)
+                    .ignoresSafeArea()
+            } else {
+                SnapImage(message: message, contentMode: .fit)
+                    .ignoresSafeArea()
+            }
 
             VStack {
                 HStack {
@@ -370,5 +392,23 @@ private struct PhotoViewer: View {
             }
         }
         .statusBarHidden()
+    }
+}
+
+/// Fetches a video message's clip, then loops it full-screen with sound.
+private struct VideoMessagePlayer: View {
+    @EnvironmentObject private var store: ChatStore
+    let message: Message
+    @State private var url: URL?
+
+    var body: some View {
+        Group {
+            if let url {
+                LoopingVideo(url: url, gravity: .resizeAspect)
+            } else {
+                ProgressView().tint(.white.opacity(0.5))
+            }
+        }
+        .task(id: message.id) { url = await store.video(for: message) }
     }
 }

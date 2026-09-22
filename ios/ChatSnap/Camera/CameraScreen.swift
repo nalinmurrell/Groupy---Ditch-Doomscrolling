@@ -68,8 +68,11 @@ struct CameraScreen: View {
 
             ShutterButton(
                 isCapturing: camera.isCapturing,
+                isRecording: camera.isRecording,
                 isEnabled: camera.status == .running && session.me != nil,
-                action: camera.capture
+                onTap: camera.capture,
+                onHoldBegan: camera.startRecording,
+                onHoldEnded: camera.stopRecording
             )
             .padding(.bottom, AppTabBar.height + 24)
         }
@@ -80,26 +83,76 @@ struct CameraScreen: View {
 
 struct ShutterButton: View {
     let isCapturing: Bool
+    let isRecording: Bool
     /// Off while the camera warms up or the session is still being restored.
     let isEnabled: Bool
-    let action: () -> Void
+    let onTap: () -> Void
+    let onHoldBegan: () -> Void
+    let onHoldEnded: () -> Void
+
+    /// Held longer than this and it's a video, not a photo.
+    private let holdThreshold: TimeInterval = 0.3
+
+    @State private var pressStart: Date?
+    @State private var isHolding = false
 
     var body: some View {
-        Button(action: action) {
-            ZStack {
-                Circle()
-                    .stroke(.white.opacity(isEnabled ? 1 : 0.3), lineWidth: 5)
+        ZStack {
+            Circle()
+                .stroke(.white.opacity(isEnabled ? 1 : 0.3), lineWidth: 5)
+                .frame(width: 78, height: 78)
+            // Fills over the clip's max length while recording.
+            if isRecording {
+                RecordingRing(seconds: CameraController.maxVideoSeconds)
                     .frame(width: 78, height: 78)
-                Circle()
-                    .fill(.white.opacity(isCapturing ? 0.9 : (isEnabled ? 0.15 : 0.05)))
-                    .frame(width: 62, height: 62)
             }
+            Circle()
+                .fill(isRecording ? Color.red : .white.opacity(isCapturing ? 0.9 : (isEnabled ? 0.15 : 0.05)))
+                .frame(width: isRecording ? 40 : 62, height: isRecording ? 40 : 62)
         }
-        .buttonStyle(.plain)
-        .scaleEffect(isCapturing ? 0.92 : 1)
+        .contentShape(Circle())
+        .scaleEffect(isCapturing ? 0.92 : (isRecording ? 1.12 : 1))
         .animation(.spring(response: 0.2, dampingFraction: 0.6), value: isCapturing)
+        .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isRecording)
         .animation(.easeInOut(duration: 0.25), value: isEnabled)
-        .disabled(isCapturing || !isEnabled)
+        .opacity(isEnabled ? 1 : 0.8)
+        .gesture(press)
+        .allowsHitTesting(isEnabled && !isCapturing)
+    }
+
+    /// One gesture, two outcomes: released early is a tap (photo); still
+    /// down past the threshold starts a recording that ends on release.
+    private var press: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { _ in
+                guard pressStart == nil else { return }
+                pressStart = Date()
+                DispatchQueue.main.asyncAfter(deadline: .now() + holdThreshold) {
+                    guard pressStart != nil, !isHolding else { return }
+                    isHolding = true
+                    onHoldBegan()
+                }
+            }
+            .onEnded { _ in
+                let held = isHolding
+                pressStart = nil
+                isHolding = false
+                if held { onHoldEnded() } else { onTap() }
+            }
+    }
+}
+
+/// A red arc that sweeps the full circle over `seconds`.
+private struct RecordingRing: View {
+    let seconds: Double
+    @State private var progress: CGFloat = 0
+
+    var body: some View {
+        Circle()
+            .trim(from: 0, to: progress)
+            .stroke(.red, style: StrokeStyle(lineWidth: 5, lineCap: .round))
+            .rotationEffect(.degrees(-90))
+            .onAppear { withAnimation(.linear(duration: seconds)) { progress = 1 } }
     }
 }
 

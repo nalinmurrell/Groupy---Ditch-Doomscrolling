@@ -61,7 +61,8 @@ camera, Return-to-send, timestamps). Bump `CURRENT_PROJECT_VERSION` in project.y
 -exportArchive` with `build/ExportOptions.plist` (method app-store-connect,
 destination upload). App record exists in App Store Connect as "Groupy".
 
-Migrations applied on the live project: friend requests (09-18), groups (09-20), pins (09-20). add-members (09-20). delete-messages (09-20), push (09-21).
+Migrations applied on the live project: friend requests (09-18), groups (09-20), pins (09-20). add-members (09-20). delete-messages (09-20), push (09-21), video (09-21: `kind` admits 'video',
+clips stored at `snaps/<cid>/<uuid>.mov`).
 Test accounts to delete under Authentication → Users: `probe-1789526196@…`,
 `probe2-…@chatsnap-probe.io`. There is a real group "Groupy Test" between Nalin
 and Probe from verification; leave it from the app.
@@ -82,6 +83,13 @@ production — the function picks the host per token. Verified end to end on
 Nalin's phone. Apply SQL with `supabase db query --linked --project-ref
 xbvmwfvriwhtrotefirx "$(cat file.sql)"` rather than pasting into the dashboard —
 a pasted anon key came through mangled once and cost a debugging round.
+
+Video: hold the shutter (≥0.3s) to record up to 15s (H.264 1080p, session
+preset `.high`; stills still use the format's max photo dimensions). Mic
+permission is requested on the first hold, not at launch. Review loops the clip;
+bubbles show a first-frame thumbnail with a play badge; the viewer loops it.
+Clips are cached in Caches/snaps. Builds before 4 can't decode `kind = video`
+and their chat list refresh fails once one exists — ship build 4 promptly.
 
 Not yet built anywhere: read receipts
 (`isOpened` was dropped when moving to Supabase), Sign in with Apple, ephemeral

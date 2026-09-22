@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 
 /// The Simulator has no camera hardware, so there's nothing to preview and
@@ -43,5 +44,56 @@ extension SimulatorFeed {
         let renderer = ImageRenderer(content: SimulatorFeed().frame(width: size.width, height: size.height))
         renderer.scale = 2
         return renderer.uiImage
+    }
+}
+
+extension SimulatorFeed {
+    /// A short stand-in clip so hold-to-record can be exercised without a
+    /// camera: a dozen frames of the feed, written with AVAssetWriter.
+    @MainActor
+    static func clip() -> URL? {
+        let size = CGSize(width: 720, height: 1280)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("mov")
+        guard let writer = try? AVAssetWriter(outputURL: url, fileType: .mov) else { return nil }
+        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
+            AVVideoCodecKey: AVVideoCodecType.h264,
+            AVVideoWidthKey: Int(size.width),
+            AVVideoHeightKey: Int(size.height),
+        ])
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32ARGB,
+        ])
+        writer.add(input)
+        guard writer.startWriting() else { return nil }
+        writer.startSession(atSourceTime: .zero)
+
+        for frame in 0..<12 {
+            let renderer = ImageRenderer(content:
+                SimulatorFeed().frame(width: size.width, height: size.height)
+                    .overlay(Text("\(frame)").font(.system(size: 120, weight: .black)).foregroundStyle(.white.opacity(0.4)))
+            )
+            guard let cg = renderer.cgImage, let pool = adaptor.pixelBufferPool else { continue }
+            var buffer: CVPixelBuffer?
+            CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer)
+            guard let buffer else { continue }
+            CVPixelBufferLockBaseAddress(buffer, [])
+            if let ctx = CGContext(
+                data: CVPixelBufferGetBaseAddress(buffer), width: Int(size.width), height: Int(size.height),
+                bitsPerComponent: 8, bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
+                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue
+            ) {
+                ctx.draw(cg, in: CGRect(origin: .zero, size: size))
+            }
+            CVPixelBufferUnlockBaseAddress(buffer, [])
+            while !input.isReadyForMoreMediaData { usleep(5_000) }
+            adaptor.append(buffer, withPresentationTime: CMTime(value: CMTimeValue(frame), timescale: 8))
+        }
+        input.markAsFinished()
+        let done = DispatchSemaphore(value: 0)
+        writer.finishWriting { done.signal() }
+        done.wait()
+        return writer.status == .completed ? url : nil
     }
 }

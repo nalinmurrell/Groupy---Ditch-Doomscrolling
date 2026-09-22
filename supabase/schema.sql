@@ -77,13 +77,13 @@ create table public.messages (
   id               uuid primary key default gen_random_uuid(),
   conversation_id  uuid not null references public.conversations (id) on delete cascade,
   sender_id        uuid not null references public.profiles (id) on delete cascade,
-  kind             text not null check (kind in ('text', 'photo')),
+  kind             text not null check (kind in ('text', 'photo', 'video')),
   body             text,
   photo_path       text,
   created_at       timestamptz not null default now(),
   check (
     (kind = 'text'  and body is not null and photo_path is null) or
-    (kind = 'photo' and photo_path is not null and body is null)
+    (kind in ('photo', 'video') and photo_path is not null and body is null)
   )
 );
 

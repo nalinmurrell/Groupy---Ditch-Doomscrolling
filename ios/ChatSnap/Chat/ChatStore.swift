@@ -1,3 +1,4 @@
+import AVFoundation
 import Supabase
 import SwiftUI
 import UIKit
@@ -93,19 +94,36 @@ final class ChatStore: ObservableObject {
     /// so membership gates the file, which means the same snap sent to three
     /// people is three objects. Fine at this scale.
     func send(_ snap: Snap, to conversationIDs: [Conversation.ID]) async {
-        guard let data = snap.image.jpegData(compressionQuality: 0.85) else { return }
+        let data: Data
+        let ext: String
+        let contentType: String
+        let kind: Message.Kind
+        switch snap.media {
+        case .photo(let image):
+            guard let jpeg = image.jpegData(compressionQuality: 0.85) else { return }
+            (data, ext, contentType, kind) = (jpeg, "jpg", "image/jpeg", .photo)
+        case .video(let url):
+            guard let mov = try? Data(contentsOf: url) else { return }
+            (data, ext, contentType, kind) = (mov, "mov", "video/quicktime", .video)
+        }
 
         for id in conversationIDs {
-            let path = "\(id.uuidString.lowercased())/\(UUID().uuidString.lowercased()).jpg"
+            let path = "\(id.uuidString.lowercased())/\(UUID().uuidString.lowercased()).\(ext)"
             do {
                 try await client.storage
                     .from("snaps")
-                    .upload(path, data: data, options: FileOptions(contentType: "image/jpeg"))
-                imageCache.setObject(snap.image, forKey: path as NSString)
+                    .upload(path, data: data, options: FileOptions(contentType: contentType))
+                switch snap.media {
+                case .photo(let image):
+                    imageCache.setObject(image, forKey: path as NSString)
+                case .video(let url):
+                    // Keep the local file as this path's cached copy.
+                    try? FileManager.default.copyItem(at: url, to: Self.videoCacheURL(for: path))
+                }
 
                 let sent: Message = try await client
                     .from("messages")
-                    .insert(NewMessage(conversationID: id, kind: .photo, body: nil, photoPath: path))
+                    .insert(NewMessage(conversationID: id, kind: kind, body: nil, photoPath: path))
                     .select()
                     .single()
                     .execute()
@@ -249,6 +267,38 @@ final class ChatStore: ObservableObject {
         return image
     }
 
+    /// A video message's clip as a local file, downloaded once into Caches.
+    func video(for message: Message) async -> URL? {
+        guard let path = message.photoPath else { return nil }
+        let local = Self.videoCacheURL(for: path)
+        if FileManager.default.fileExists(atPath: local.path) { return local }
+        guard let data = try? await client.storage.from("snaps").download(path: path),
+              (try? data.write(to: local)) != nil else { return nil }
+        return local
+    }
+
+    /// First frame of a video message, for its bubble.
+    func thumbnail(for message: Message) async -> UIImage? {
+        guard let path = message.photoPath else { return nil }
+        let key = "thumb:\(path)" as NSString
+        if let cached = imageCache.object(forKey: key) { return cached }
+        guard let url = await video(for: message) else { return nil }
+        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 480, height: 720)
+        guard let (cg, _) = try? await generator.image(at: .zero) else { return nil }
+        let image = UIImage(cgImage: cg)
+        imageCache.setObject(image, forKey: key)
+        return image
+    }
+
+    private static func videoCacheURL(for path: String) -> URL {
+        let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("snaps", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent(path.replacingOccurrences(of: "/", with: "_"))
+    }
+
     // MARK: - Deleting
 
     /// Delete one of your own messages for everyone. The photo file goes
@@ -259,6 +309,8 @@ final class ChatStore: ObservableObject {
             if let path = message.photoPath {
                 _ = try await client.storage.from("snaps").remove(paths: [path])
                 imageCache.removeObject(forKey: path as NSString)
+                imageCache.removeObject(forKey: "thumb:\(path)" as NSString)
+                try? FileManager.default.removeItem(at: Self.videoCacheURL(for: path))
             }
             try await client
                 .from("messages")

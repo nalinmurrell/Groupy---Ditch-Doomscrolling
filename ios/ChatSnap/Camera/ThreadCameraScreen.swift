@@ -86,8 +86,11 @@ struct ThreadCameraScreen: View {
 
                 ShutterButton(
                     isCapturing: camera.isCapturing,
+                    isRecording: camera.isRecording,
                     isEnabled: camera.status == .running,
-                    action: camera.capture
+                    onTap: camera.capture,
+                    onHoldBegan: camera.startRecording,
+                    onHoldEnded: camera.stopRecording
                 )
                 .padding(.bottom, 36)
             }
@@ -123,14 +126,7 @@ struct ThreadCameraScreen: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            Color.clear
-                .overlay {
-                    Image(uiImage: snap.image)
-                        .resizable()
-                        .scaledToFill()
-                }
-                .clipped()
-                .ignoresSafeArea()
+            SnapPreview(snap: snap)
 
             VStack {
                 HStack {

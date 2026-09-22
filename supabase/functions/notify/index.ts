@@ -112,7 +112,7 @@ Deno.serve(async (req) => {
   if (!devices?.length) return new Response("no devices", { status: 200 });
 
   const first = sender.display_name.split(" ")[0];
-  const text = message.kind === "photo" ? "📸 Snap" : message.body ?? "";
+  const text = message.kind === "photo" ? "📸 Snap" : message.kind === "video" ? "🎥 Video" : message.body ?? "";
   const alert = conversation.is_group
     ? { title: conversation.name ?? "Group", body: `${first}: ${text}` }
     : { title: sender.display_name, body: text };

@@ -32,7 +32,7 @@ enum UsernameRule {
 /// A row in `messages`.
 struct Message: Identifiable, Codable, Hashable {
     enum Kind: String, Codable {
-        case text, photo
+        case text, photo, video
     }
 
     let id: UUID
@@ -101,6 +101,9 @@ struct Conversation: Identifiable, Hashable {
         case .photo:
             if mine { return "Sent" }
             return who.map { "New Snap from \($0)" } ?? "New Snap"
+        case .video:
+            if mine { return "Sent" }
+            return who.map { "New Video from \($0)" } ?? "New Video"
         case .text:
             let body = last.body ?? ""
             if mine { return "You: \(body)" }

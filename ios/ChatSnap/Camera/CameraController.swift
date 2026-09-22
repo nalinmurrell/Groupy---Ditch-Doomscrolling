@@ -15,6 +15,7 @@ final class CameraController: NSObject, ObservableObject {
 
     @Published private(set) var status: Status = .starting
     @Published private(set) var isCapturing = false
+    @Published private(set) var isRecording = false
     @Published private(set) var position: AVCaptureDevice.Position = .back
     @Published var flashMode: AVCaptureDevice.FlashMode = .off
 
@@ -38,6 +39,10 @@ final class CameraController: NSObject, ObservableObject {
 
     private let sessionQueue = DispatchQueue(label: "com.chatsnap.camera")
     private let photoOutput = AVCapturePhotoOutput()
+    private let movieOutput = AVCaptureMovieFileOutput()
+    private var audioInput: AVCaptureDeviceInput?
+    /// Snapchat-ish cap; keeps a clip well under the upload limit.
+    nonisolated static let maxVideoSeconds: Double = 15
     private var videoInput: AVCaptureDeviceInput?
     private var isConfigured = false
 
@@ -93,7 +98,9 @@ final class CameraController: NSObject, ObservableObject {
             }
 
             self.session.beginConfiguration()
-            self.session.sessionPreset = .photo
+            // 1080p 16:9: what video needs, and it fills the screen. Stills
+            // still come out at the format's full photo size (see below).
+            self.session.sessionPreset = .high
 
             guard let device = Self.device(at: .back),
                   let input = try? AVCaptureDeviceInput(device: device),
@@ -119,6 +126,21 @@ final class CameraController: NSObject, ObservableObject {
             }
             self.session.addOutput(self.photoOutput)
             self.photoOutput.maxPhotoQualityPrioritization = .balanced
+            self.photoOutput.maxPhotoDimensions = Self.maxPhotoDimensions(for: device)
+
+            if self.session.canAddOutput(self.movieOutput) {
+                self.session.addOutput(self.movieOutput)
+                self.movieOutput.maxRecordedDuration = CMTime(seconds: Self.maxVideoSeconds, preferredTimescale: 600)
+                if let connection = self.movieOutput.connection(with: .video),
+                   self.movieOutput.availableVideoCodecTypes.contains(.h264) {
+                    self.movieOutput.setOutputSettings([AVVideoCodecKey: AVVideoCodecType.h264], for: connection)
+                }
+            }
+            // Mic only if already allowed; otherwise it's asked for on the
+            // first hold-to-record, not on launch.
+            if AVCaptureDevice.authorizationStatus(for: .audio) == .authorized {
+                self.attachMicrophone()
+            }
 
             self.session.commitConfiguration()
             if let connection = self.previewLayer.connection,
@@ -129,6 +151,22 @@ final class CameraController: NSObject, ObservableObject {
             self.session.startRunning()
             self.publish { $0.status = .running }
         }
+    }
+
+    /// The biggest still the active (video) format can deliver.
+    private static func maxPhotoDimensions(for device: AVCaptureDevice) -> CMVideoDimensions {
+        device.activeFormat.supportedMaxPhotoDimensions.max { $0.width * $0.height < $1.width * $1.height }
+            ?? CMVideoDimensions(width: 1920, height: 1080)
+    }
+
+    /// Must be called inside begin/commitConfiguration on the session queue.
+    private func attachMicrophone() {
+        guard audioInput == nil,
+              let mic = AVCaptureDevice.default(for: .audio),
+              let input = try? AVCaptureDeviceInput(device: mic),
+              session.canAddInput(input) else { return }
+        session.addInput(input)
+        audioInput = input
     }
 
     private static func device(at position: AVCaptureDevice.Position) -> AVCaptureDevice? {
@@ -155,6 +193,7 @@ final class CameraController: NSObject, ObservableObject {
             if self.session.canAddInput(input) {
                 self.session.addInput(input)
                 self.videoInput = input
+                self.photoOutput.maxPhotoDimensions = Self.maxPhotoDimensions(for: device)
             } else {
                 self.session.addInput(current)
             }
@@ -187,6 +226,7 @@ final class CameraController: NSObject, ObservableObject {
             guard let self else { return }
 
             let settings = AVCapturePhotoSettings()
+            settings.maxPhotoDimensions = self.photoOutput.maxPhotoDimensions
             if self.photoOutput.supportedFlashModes.contains(flash) {
                 settings.flashMode = flash
             }
@@ -207,7 +247,79 @@ final class CameraController: NSObject, ObservableObject {
         }
     }
 
+    // MARK: - Video
+
+    /// Hold-to-record. Asks for the mic the first time; a "no" just means
+    /// silent clips.
+    func startRecording() {
+        guard status == .running, !isCapturing, !isRecording else { return }
+        isRecording = true
+
+        if usesSimulatorFeed {
+            // No capture hardware: fake a short clip so the flow can be exercised.
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(1))
+                guard let self, self.isRecording else { return }
+                self.isRecording = false
+                if let url = SimulatorFeed.clip() { self.snap = Snap(videoURL: url) }
+            }
+            return
+        }
+
+        let mirrored = position == .front
+        let begin = { [weak self] in
+            guard let self else { return }
+            self.sessionQueue.async {
+                if let connection = self.movieOutput.connection(with: .video) {
+                    if connection.isVideoRotationAngleSupported(90) {
+                        connection.videoRotationAngle = 90
+                    }
+                    if connection.isVideoMirroringSupported {
+                        connection.automaticallyAdjustsVideoMirroring = false
+                        connection.isVideoMirrored = mirrored
+                    }
+                }
+                let url = FileManager.default.temporaryDirectory
+                    .appendingPathComponent(UUID().uuidString)
+                    .appendingPathExtension("mov")
+                self.movieOutput.startRecording(to: url, recordingDelegate: self)
+            }
+        }
+
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
+                guard let self else { return }
+                self.sessionQueue.async {
+                    if granted {
+                        self.session.beginConfiguration()
+                        self.attachMicrophone()
+                        self.session.commitConfiguration()
+                    }
+                    // The user may have let go during the prompt.
+                    DispatchQueue.main.async { if self.isRecording { begin() } }
+                }
+            }
+        default:
+            begin()
+        }
+    }
+
+    func stopRecording() {
+        guard isRecording else { return }
+        if usesSimulatorFeed { return } // the fake clip finishes on its own
+        sessionQueue.async { [weak self] in
+            guard let self, self.movieOutput.isRecording else {
+                // Let go before recording actually began (e.g. mic prompt).
+                self?.publish { $0.isRecording = false }
+                return
+            }
+            self.movieOutput.stopRecording()
+        }
+    }
+
     func discardSnap() {
+        if let url = snap?.videoURL { try? FileManager.default.removeItem(at: url) }
         snap = nil
     }
 
@@ -229,6 +341,25 @@ final class CameraController: NSObject, ObservableObject {
 
     private func publish(_ mutate: @escaping (CameraController) -> Void) {
         DispatchQueue.main.async { mutate(self) }
+    }
+}
+
+// MARK: - AVCaptureFileOutputRecordingDelegate
+
+extension CameraController: AVCaptureFileOutputRecordingDelegate {
+    func fileOutput(
+        _ output: AVCaptureFileOutput,
+        didFinishRecordingTo outputFileURL: URL,
+        from connections: [AVCaptureConnection],
+        error: Error?
+    ) {
+        // Hitting the duration cap reports as an error but the file is fine.
+        let usable = error == nil
+            || (error as NSError?)?.userInfo[AVErrorRecordingSuccessfullyFinishedKey] as? Bool == true
+        publish {
+            $0.isRecording = false
+            if usable { $0.snap = Snap(videoURL: outputFileURL) }
+        }
     }
 }
 
