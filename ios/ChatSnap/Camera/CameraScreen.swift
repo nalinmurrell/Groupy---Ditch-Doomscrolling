@@ -21,7 +21,7 @@ struct CameraScreen: View {
             .ignoresSafeArea()
             .opacity(camera.status == .running ? 1 : 0)
             // Snapchat muscle memory: double-tap the viewfinder to flip.
-            .onTapGesture(count: 2) { camera.flipCamera() }
+            .doubleTap { camera.flipCamera() }
 
             switch camera.status {
             case .denied:
@@ -125,7 +125,7 @@ struct ShutterButton: View {
     /// ends it; the controller sorts out photo vs video.
     private var press: some Gesture {
         DragGesture(minimumDistance: 0)
-            .onChanged { _ in
+            .onChanged { value in
                 guard pressStart == nil else { return }
                 pressStart = Date()
                 onPressBegan()
