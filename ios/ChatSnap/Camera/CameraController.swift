@@ -147,6 +147,7 @@ final class CameraController: NSObject, ObservableObject {
                connection.isVideoRotationAngleSupported(90) {
                 connection.videoRotationAngle = 90
             }
+            self.orientMovieConnection(mirrored: false)
             self.isConfigured = true
             self.session.startRunning()
             self.publish { $0.status = .running }
@@ -157,6 +158,20 @@ final class CameraController: NSObject, ObservableObject {
     private static func maxPhotoDimensions(for device: AVCaptureDevice) -> CMVideoDimensions {
         device.activeFormat.supportedMaxPhotoDimensions.max { $0.width * $0.height < $1.width * $1.height }
             ?? CMVideoDimensions(width: 1920, height: 1080)
+    }
+
+    /// Portrait, and mirrored for selfies so the clip matches the preview.
+    /// Done once per camera rather than at each record start, which would
+    /// add a reconfigure to the hold-to-record latency.
+    private func orientMovieConnection(mirrored: Bool) {
+        guard let connection = movieOutput.connection(with: .video) else { return }
+        if connection.isVideoRotationAngleSupported(90) {
+            connection.videoRotationAngle = 90
+        }
+        if connection.isVideoMirroringSupported {
+            connection.automaticallyAdjustsVideoMirroring = false
+            connection.isVideoMirrored = mirrored
+        }
     }
 
     /// Must be called inside begin/commitConfiguration on the session queue.
@@ -200,6 +215,7 @@ final class CameraController: NSObject, ObservableObject {
             self.session.commitConfiguration()
 
             let settled = self.videoInput?.device.position ?? .back
+            self.orientMovieConnection(mirrored: settled == .front)
             self.publish { $0.position = settled }
         }
     }
@@ -266,19 +282,9 @@ final class CameraController: NSObject, ObservableObject {
             return
         }
 
-        let mirrored = position == .front
         let begin = { [weak self] in
             guard let self else { return }
             self.sessionQueue.async {
-                if let connection = self.movieOutput.connection(with: .video) {
-                    if connection.isVideoRotationAngleSupported(90) {
-                        connection.videoRotationAngle = 90
-                    }
-                    if connection.isVideoMirroringSupported {
-                        connection.automaticallyAdjustsVideoMirroring = false
-                        connection.isVideoMirrored = mirrored
-                    }
-                }
                 let url = FileManager.default.temporaryDirectory
                     .appendingPathComponent(UUID().uuidString)
                     .appendingPathExtension("mov")
@@ -295,6 +301,7 @@ final class CameraController: NSObject, ObservableObject {
                         self.session.beginConfiguration()
                         self.attachMicrophone()
                         self.session.commitConfiguration()
+                        self.orientMovieConnection(mirrored: self.videoInput?.device.position == .front)
                     }
                     // The user may have let go during the prompt.
                     DispatchQueue.main.async { if self.isRecording { begin() } }
