@@ -73,7 +73,12 @@ struct ConversationScreen: View {
             .presentationBackground(.clear)
         }
         .sheet(item: $actionTarget) { message in
-            MessageActionsSheet(actions: actions(for: message))
+            MessageActionsSheet(
+                actions: actions(for: message),
+                currentReaction: message.reaction(by: session.userID)
+            ) { emoji in
+                Task { await store.react(to: message, with: emoji) }
+            }
         }
         .confirmationDialog(
             "Delete this \(deleting?.kind == .text ? "message" : deleting?.kind == .video ? "video" : "photo")?",
@@ -330,15 +335,39 @@ fileprivate struct MessageAction: Identifiable {
     let run: () -> Void
 }
 
-/// Snapchat's long-press sheet: big rows, icon then label, hairlines between.
+/// Snapchat's long-press sheet: a reaction bar on top, then big rows —
+/// icon then label, hairlines between.
 fileprivate struct MessageActionsSheet: View {
     @Environment(\.dismiss) private var dismiss
     let actions: [MessageAction]
+    let currentReaction: String?
+    /// The new reaction, or nil to take yours back.
+    let onReact: (String?) -> Void
+
+    @State private var showsAllEmoji = false
+    @State private var detent: PresentationDetent = .height(0)
+
+    static let quick = ["❤️", "😂", "😮", "😢", "🔥", "👍"]
+    static let more = ["😍", "🥰", "😘", "😭", "🤣", "😅",
+                       "😊", "😎", "🤔", "🙄", "😬", "😳",
+                       "🥺", "😡", "🤯", "💀", "👀", "😴",
+                       "👏", "🙌", "🙏", "💪", "🤝", "🫶",
+                       "💯", "✨", "🎉", "👎", "🤮", "🫡"]
 
     private let rowHeight: CGFloat = 66
+    private let barHeight: CGFloat = 96
+
+    private var compact: PresentationDetent {
+        .height(barHeight + CGFloat(actions.count) * (rowHeight + 0.5) + 28 + 34)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
+            if showsAllEmoji {
+                emojiGrid
+            } else {
+                reactionBar
+            }
             ForEach(actions) { action in
                 Button {
                     dismiss()
@@ -366,11 +395,62 @@ fileprivate struct MessageActionsSheet: View {
         }
         .padding(.top, 28)
         .frame(maxHeight: .infinity, alignment: .top)
-        .presentationDetents([.height(CGFloat(actions.count) * (rowHeight + 0.5) + 28 + 34)])
+        .presentationDetents([compact, .large], selection: $detent)
+        .onAppear { detent = compact }
         .presentationDragIndicator(.visible)
         .presentationCornerRadius(26)
         .presentationBackground(Color(white: 0.09))
         .preferredColorScheme(.dark)
+    }
+
+    private var reactionBar: some View {
+        HStack(spacing: 4) {
+            ForEach(Self.quick, id: \.self) { emoji in
+                emojiButton(emoji, size: 30)
+            }
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showsAllEmoji = true
+                    detent = .large
+                }
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 46, height: 46)
+                    .background(Color(red: 0.05, green: 0.6, blue: 1), in: Circle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(.white.opacity(0.1), in: Capsule())
+        .frame(height: barHeight - 16)
+        .padding(.bottom, 16)
+    }
+
+    private var emojiGrid: some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 6), spacing: 10) {
+            ForEach(Self.quick + Self.more, id: \.self) { emoji in
+                emojiButton(emoji, size: 32)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 20)
+    }
+
+    /// Tapping your current reaction again takes it back.
+    private func emojiButton(_ emoji: String, size: CGFloat) -> some View {
+        Button {
+            dismiss()
+            onReact(emoji == currentReaction ? nil : emoji)
+        } label: {
+            Text(emoji)
+                .font(.system(size: size))
+                .frame(width: 48, height: 48)
+                .background(.white.opacity(emoji == currentReaction ? 0.22 : 0), in: Circle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -401,6 +481,12 @@ private struct MessageRow: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             bubble
+            if !message.reactions.isEmpty {
+                ReactionPill(reactions: message.reactions, me: me)
+                    // Tucked up against the bubble's bottom edge.
+                    .padding(.top, -12)
+                    .padding(isFromMe ? .trailing : .leading, 10)
+            }
             if message.isSnap && message.isSaved {
                 Text("Saved")
                     .font(.system(size: 11, weight: .medium))
@@ -455,6 +541,46 @@ private struct MessageRow: View {
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// Reactions under a message: each emoji once, with a count when shared.
+private struct ReactionPill: View {
+    let reactions: [Message.Reaction]
+    let me: UUID?
+
+    private var grouped: [(emoji: String, count: Int)] {
+        var order: [String] = []
+        var counts: [String: Int] = [:]
+        for reaction in reactions {
+            if counts[reaction.emoji] == nil { order.append(reaction.emoji) }
+            counts[reaction.emoji, default: 0] += 1
+        }
+        return order.map { ($0, counts[$0]!) }
+    }
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(grouped, id: \.emoji) { group in
+                HStack(spacing: 2) {
+                    Text(group.emoji).font(.system(size: 15))
+                    if group.count > 1 {
+                        Text("\(group.count)")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.8))
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Color(white: 0.17), in: Capsule())
+        // A ring the colour of the background separates it from the bubble.
+        .overlay(Capsule().strokeBorder(.black, lineWidth: 2))
+        .overlay(
+            Capsule().strokeBorder(Color(red: 0.05, green: 0.6, blue: 1).opacity(reactions.contains { $0.userID == me } ? 0.8 : 0), lineWidth: 1)
+                .padding(2)
+        )
     }
 }
 

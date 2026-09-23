@@ -47,6 +47,14 @@ struct Message: Identifiable, Decodable, Hashable {
     var savedAt: Date?
     /// Recipients who've opened it (from `snap_views`).
     var openedBy: [UUID]
+    /// One per person, oldest first (from `message_reactions`).
+    var reactions: [Reaction]
+
+    struct Reaction: Hashable, Decodable {
+        let userID: UUID
+        var emoji: String
+        enum CodingKeys: String, CodingKey { case emoji, userID = "user_id" }
+    }
 
     enum CodingKeys: String, CodingKey {
         case id, kind, body
@@ -57,6 +65,7 @@ struct Message: Identifiable, Decodable, Hashable {
         case savedBy = "saved_by"
         case savedAt = "saved_at"
         case snapViews = "snap_views"
+        case reactions = "message_reactions"
     }
 
     private struct View: Decodable {
@@ -77,6 +86,11 @@ struct Message: Identifiable, Decodable, Hashable {
         savedAt = try c.decodeIfPresent(Date.self, forKey: .savedAt)
         // Absent on realtime payloads and fresh inserts: nobody's opened it.
         openedBy = (try c.decodeIfPresent([View].self, forKey: .snapViews) ?? []).map(\.userID)
+        reactions = try c.decodeIfPresent([Reaction].self, forKey: .reactions) ?? []
+    }
+
+    func reaction(by user: UUID?) -> String? {
+        reactions.first { $0.userID == user }?.emoji
     }
 
     func isFromMe(_ me: UUID?) -> Bool { senderID == me }

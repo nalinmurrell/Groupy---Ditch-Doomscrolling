@@ -19,6 +19,7 @@ final class ChatStore: ObservableObject {
     private var deletions: Task<Void, Never>?
     private var saves: Task<Void, Never>?
     private var opens: Task<Void, Never>?
+    private var reacts: Task<Void, Never>?
     private var membership: Task<Void, Never>?
 
     /// Pinned first (in the order they were pinned), then most recent activity.
@@ -79,8 +80,9 @@ final class ChatStore: ObservableObject {
         do {
             let rows: [Message] = try await client
                 .from("messages")
-                .select("*, snap_views ( user_id )")
+                .select("*, snap_views ( user_id ), message_reactions ( user_id, emoji, created_at )")
                 .eq("conversation_id", value: id.uuidString)
+                .order("created_at", ascending: true, referencedTable: "message_reactions")
                 .order("created_at", ascending: true)
                 .execute()
                 .value
@@ -328,6 +330,46 @@ final class ChatStore: ObservableObject {
         }
     }
 
+    // MARK: - Reactions
+
+    /// React with `emoji`, replacing any reaction you had; nil takes yours
+    /// back. Shown immediately, then written.
+    func react(to message: Message, with emoji: String?) async {
+        guard let me = client.auth.currentUser?.id else { return }
+        let before = message.reaction(by: me)
+        setReaction(message.id, user: me, emoji: emoji)
+        do {
+            if let emoji {
+                struct Row: Encodable { let message_id: UUID; let user_id: UUID; let emoji: String }
+                try await client.from("message_reactions")
+                    .upsert(Row(message_id: message.id, user_id: me, emoji: emoji))
+                    .execute()
+            } else {
+                try await client.from("message_reactions")
+                    .delete()
+                    .eq("message_id", value: message.id.uuidString)
+                    .eq("user_id", value: me.uuidString)
+                    .execute()
+            }
+        } catch {
+            setReaction(message.id, user: me, emoji: before)
+        }
+    }
+
+    private func setReaction(_ id: Message.ID, user: UUID, emoji: String?) {
+        update(id) { message in
+            if let emoji {
+                if let i = message.reactions.firstIndex(where: { $0.userID == user }) {
+                    message.reactions[i].emoji = emoji
+                } else {
+                    message.reactions.append(.init(userID: user, emoji: emoji))
+                }
+            } else {
+                message.reactions.removeAll { $0.userID == user }
+            }
+        }
+    }
+
     /// Apply a change to a message wherever it's held: its thread and, if
     /// it's the latest, the chat list preview.
     private func update(_ id: Message.ID, _ change: (inout Message) -> Void) {
@@ -388,6 +430,7 @@ final class ChatStore: ObservableObject {
             let deletes = channel.postgresChange(DeleteAction.self, schema: "public", table: "messages")
             let updates = channel.postgresChange(UpdateAction.self, schema: "public", table: "messages")
             let views = channel.postgresChange(InsertAction.self, schema: "public", table: "snap_views")
+            let reactionChanges = channel.postgresChange(AnyAction.self, schema: "public", table: "message_reactions")
             guard (try? await channel.subscribeWithError()) != nil else { return }
 
             // Saved / unsaved in chat.
@@ -399,6 +442,33 @@ final class ChatStore: ObservableObject {
                     self.update(row.id) {
                         $0.savedBy = row.savedBy
                         $0.savedAt = row.savedAt
+                    }
+                }
+            }
+            // Reactions from anyone, including our own echoes (idempotent).
+            reacts = Task { [weak self] in
+                struct Row: Decodable {
+                    let messageID: UUID
+                    let userID: UUID
+                    let emoji: String?
+                    enum CodingKeys: String, CodingKey { case emoji, messageID = "message_id", userID = "user_id" }
+                }
+                for await change in reactionChanges {
+                    guard let self else { return }
+                    switch change {
+                    case .insert(let action):
+                        if let row = try? action.decodeRecord(as: Row.self, decoder: Backend.decoder) {
+                            self.setReaction(row.messageID, user: row.userID, emoji: row.emoji)
+                        }
+                    case .update(let action):
+                        if let row = try? action.decodeRecord(as: Row.self, decoder: Backend.decoder) {
+                            self.setReaction(row.messageID, user: row.userID, emoji: row.emoji)
+                        }
+                    case .delete(let action):
+                        // Only the primary key comes through on a delete.
+                        if let row = try? action.decodeOldRecord(as: Row.self, decoder: Backend.decoder) {
+                            self.setReaction(row.messageID, user: row.userID, emoji: nil)
+                        }
                     }
                 }
             }
@@ -459,6 +529,8 @@ final class ChatStore: ObservableObject {
         saves = nil
         opens?.cancel()
         opens = nil
+        reacts?.cancel()
+        reacts = nil
         membership?.cancel()
         membership = nil
     }

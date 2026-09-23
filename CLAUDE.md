@@ -62,7 +62,7 @@ camera, Return-to-send, timestamps). Bump `CURRENT_PROJECT_VERSION` in project.y
 destination upload). App record exists in App Store Connect as "Groupy".
 
 Migrations applied on the live project: friend requests (09-18), groups (09-20), pins (09-20). add-members (09-20). delete-messages (09-20), push (09-21), video (09-21: `kind` admits 'video',
-clips stored at `snaps/<cid>/<uuid>.mov`), snaps opened/saved (09-23).
+clips stored at `snaps/<cid>/<uuid>.mov`), snaps opened/saved (09-23), reactions (09-23).
 Test accounts to delete under Authentication → Users: `probe-1789526196@…`,
 `probe2-…@chatsnap-probe.io`. There is a real group "Groupy Test" between Nalin
 and Probe from verification; leave it from the app.
@@ -102,6 +102,12 @@ unsave), and saved snaps are thumbnails viewable any time. All pre-09-23
 photos/videos were marked saved so history stayed visible. "Opened" is a UI
 rule: the file stays in storage and members can still fetch it — true
 ephemerality would need server-side deletion once everyone's opened it.
+
+Reactions (09-23): `message_reactions` (PK message+user, so one each; upsert
+replaces). Plain RLS writes — react as yourself, in chats you're in. On
+realtime; delete events carry only the PK. Long-press sheet has a bar of six
+plus a 36-emoji grid; the pill under a bubble groups by emoji with counts.
+No push for reactions.
 
 Not yet built anywhere: read receipts for text, Sign in with Apple, snap
 replays / timers, deleting fully-opened unsaved snap files.
