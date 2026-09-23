@@ -491,7 +491,18 @@ private struct MessageRow: View {
                     .padding(.leading, 6)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            bubble
+            if message.isSnap && message.isSaved {
+                // Snapchat's tell for "saved": a grey band the width of the
+                // chat, the snap sitting on its sender's side.
+                bubble
+                    .padding(8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(Color(white: 0.16))
+                    )
+            } else {
+                bubble
+            }
             if !message.reactions.isEmpty {
                 ReactionPill(reactions: message.reactions, me: me)
                     // Tucked up against the bubble's bottom edge.
