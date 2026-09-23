@@ -21,49 +21,118 @@ struct ProfileButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Profile")
-        .sheet(isPresented: $isShowingProfile) {
-            ProfileSheet()
-                .presentationDetents([.medium])
-                .presentationDragIndicator(.visible)
-                .presentationBackground(Color(white: 0.09))
-                .preferredColorScheme(.dark)
+        .fullScreenCover(isPresented: $isShowingProfile) {
+            ProfileScreen()
         }
     }
 }
 
-/// Who you are, and the way out.
-private struct ProfileSheet: View {
+/// Your profile: a page of its own, with settings behind the gear.
+private struct ProfileScreen: View {
     @EnvironmentObject private var session: SessionStore
     @Environment(\.dismiss) private var dismiss
+    @State private var isShowingSettings = false
 
     var body: some View {
-        VStack(spacing: 10) {
-            if let me = session.me {
-                Avatar(subject: me, size: 96)
-                    .padding(.top, 36)
-                Text(me.displayName)
-                    .font(.system(size: 24, weight: .bold))
+        NavigationStack {
+            ScrollView {
+                header
+            }
+            .ignoresSafeArea(edges: .top)
+            .background(Color.black)
+            .toolbar(.hidden, for: .navigationBar)
+            .overlay(alignment: .top) { topBar }
+            .navigationDestination(isPresented: $isShowingSettings) {
+                SettingsScreen { dismiss() }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private var topBar: some View {
+        HStack {
+            Button { dismiss() } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(.white)
-                Text("@\(me.username)")
-                    .font(.system(size: 15))
-                    .foregroundStyle(.white.opacity(0.5))
+                    .frame(width: 44, height: 44)
+                    .background(.black.opacity(0.35), in: Circle())
             }
+            .accessibilityLabel("Back")
             Spacer()
-            Button {
-                dismiss()
-                Task { await session.signOut() }
-            } label: {
-                Text("Sign Out")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Color(red: 1, green: 0.27, blue: 0.35))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 15)
-                    .background(.white.opacity(0.08), in: Capsule())
+            Button { isShowingSettings = true } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+                    .background(.black.opacity(0.35), in: Circle())
             }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 20)
-            .padding(.bottom, 20)
+            .accessibilityLabel("Settings")
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+    }
+
+    /// A banner in your avatar's colour, you in the middle of it.
+    private var header: some View {
+        let hue = session.me?.hue ?? 0.7
+        return VStack(spacing: 8) {
+            if let me = session.me {
+                Avatar(subject: me, size: 132)
+                    .overlay(Circle().strokeBorder(.white, lineWidth: 4))
+                    .shadow(color: .black.opacity(0.4), radius: 16, y: 6)
+                    .padding(.top, 130)
+                Text(me.displayName)
+                    .font(.system(size: 30, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.top, 8)
+                Text(me.username)
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.7))
+            }
         }
         .frame(maxWidth: .infinity)
+        .padding(.bottom, 32)
+        .background(
+            LinearGradient(
+                colors: [
+                    Color(hue: hue, saturation: 0.55, brightness: 0.55),
+                    Color(hue: hue, saturation: 0.45, brightness: 0.25),
+                    .black,
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+    }
+}
+
+/// Settings. For now, just who you're signed in as and the way out.
+private struct SettingsScreen: View {
+    @EnvironmentObject private var session: SessionStore
+    /// Closes the whole profile, so sign-out doesn't leave it up.
+    let onSignOut: () -> Void
+
+    var body: some View {
+        List {
+            if let me = session.me {
+                Section("Account") {
+                    LabeledContent("Name", value: me.displayName)
+                    LabeledContent("Username", value: "@\(me.username)")
+                }
+            }
+            Section {
+                Button("Sign Out", role: .destructive) {
+                    onSignOut()
+                    Task { await session.signOut() }
+                }
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(Color.black)
+        .navigationTitle("Settings")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
     }
 }
