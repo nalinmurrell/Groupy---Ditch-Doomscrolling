@@ -514,8 +514,8 @@ private struct MessageRow: View {
                 // Snapchat's wording and look: a centred, spaced-out caps line.
                 Text(saverName.map { "\($0) saved a Snap in Chat!" } ?? "Saved in Chat")
                     .textCase(.uppercase)
-                    .font(.system(size: 12, weight: .semibold))
-                    .tracking(1.2)
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(1)
                     .foregroundStyle(.white.opacity(0.45))
                     .frame(maxWidth: .infinity)
                     .padding(.top, 4)
