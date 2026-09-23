@@ -136,7 +136,8 @@ struct ConversationScreen: View {
                             message: message,
                             me: session.userID,
                             isGroup: conversation?.isGroup == true,
-                            senderName: (conversation?.isGroup == true && !mine && startsRun) ? conversation?.senderName(of: message) : nil
+                            senderName: (conversation?.isGroup == true && !mine && startsRun) ? conversation?.senderName(of: message) : nil,
+                            saverName: saverName(of: message)
                         ) {
                             guard actionTarget == nil else { return }
                             viewing = message
@@ -321,6 +322,14 @@ extension ConversationScreen {
         return list
     }
 
+    /// "you" or the saver's first name, for the caption under a saved snap.
+    fileprivate func saverName(of message: Message) -> String? {
+        guard let saver = message.savedBy else { return nil }
+        if saver == session.userID { return "you" }
+        let name = conversation?.members.first { $0.id == saver }?.displayName
+        return name?.split(separator: " ").first.map(String.init) ?? name
+    }
+
     /// Presenting straight from a dismissing sheet gets dropped; wait it out.
     private func afterSheet(_ work: @escaping () -> Void) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
@@ -467,6 +476,8 @@ private struct MessageRow: View {
     let me: UUID?
     let isGroup: Bool
     var senderName: String? = nil
+    /// Who saved it in chat, if anyone ("you" or a first name).
+    var saverName: String? = nil
     let onOpenPhoto: () -> Void
 
     private var isFromMe: Bool { message.isFromMe(me) }
@@ -488,7 +499,7 @@ private struct MessageRow: View {
                     .padding(isFromMe ? .trailing : .leading, 10)
             }
             if message.isSnap && message.isSaved {
-                Text("Saved")
+                Text(saverName.map { "Saved by \($0)" } ?? "Saved")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.white.opacity(0.4))
                     .padding(.horizontal, 6)
