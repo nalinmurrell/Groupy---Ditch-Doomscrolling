@@ -84,8 +84,11 @@ Nalin's phone. Apply SQL with `supabase db query --linked --project-ref
 xbvmwfvriwhtrotefirx "$(cat file.sql)"` rather than pasting into the dashboard —
 a pasted anon key came through mangled once and cost a debugging round.
 
-Video: hold the shutter (≥0.3s) to record up to 15s (H.264 1080p, session
-preset `.high`; stills still use the format's max photo dimensions). Mic
+Video: hold the shutter (≥0.2s) to record up to 15s (H.264 1080p, session
+preset `.high`; stills still use the format's max photo dimensions). Recording
+pre-rolls from touch-down; a tap bins the clip and takes a photo instead. The
+shutter's press comes from a UIKit recognizer (`PressDetector`) because SwiftUI
+gestures there were delivered ~0.77s late — measured, not guessed. Mic
 permission is requested on the first hold, not at launch. Review loops the clip;
 bubbles show a first-frame thumbnail with a play badge; the viewer loops it.
 Clips are cached in Caches/snaps. Builds before 4 can't decode `kind = video`

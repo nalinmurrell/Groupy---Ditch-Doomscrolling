@@ -117,29 +117,31 @@ struct ShutterButton: View {
         .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isRecording)
         .animation(.easeInOut(duration: 0.25), value: isEnabled)
         .opacity(isEnabled ? 1 : 0.8)
-        .gesture(press)
+        .overlay {
+            PressDetector(onBegan: began, onEnded: ended)
+                .clipShape(Circle())
+        }
         .allowsHitTesting(isEnabled && !isCapturing)
     }
 
     /// Touch-down starts things, the threshold makes it a hold, release
     /// ends it; the controller sorts out photo vs video.
-    private var press: some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onChanged { value in
-                guard pressStart == nil else { return }
-                pressStart = Date()
-                onPressBegan()
-                DispatchQueue.main.asyncAfter(deadline: .now() + holdThreshold) {
-                    guard pressStart != nil, !isHolding else { return }
-                    isHolding = true
-                    onHold()
-                }
-            }
-            .onEnded { _ in
-                pressStart = nil
-                isHolding = false
-                onPressEnded()
-            }
+    private func began() {
+        guard pressStart == nil else { return }
+        pressStart = Date()
+        onPressBegan()
+        DispatchQueue.main.asyncAfter(deadline: .now() + holdThreshold) {
+            guard pressStart != nil, !isHolding else { return }
+            isHolding = true
+            onHold()
+        }
+    }
+
+    private func ended() {
+        guard pressStart != nil else { return }
+        pressStart = nil
+        isHolding = false
+        onPressEnded()
     }
 }
 
