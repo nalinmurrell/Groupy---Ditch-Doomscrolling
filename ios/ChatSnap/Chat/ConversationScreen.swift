@@ -498,7 +498,7 @@ private struct MessageRow: View {
                     .padding(8)
                     .background(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(Color(white: 0.11))
+                            .fill(Color(red: 0x2B / 255, green: 0x2B / 255, blue: 0x2B / 255))
                     )
             } else {
                 bubble
