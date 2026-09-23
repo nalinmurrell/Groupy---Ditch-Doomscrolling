@@ -12,6 +12,8 @@ struct ConversationScreen: View {
     @State private var isShowingMembers = false
     @State private var isShootingSnap = false
     @State private var deleting: Message?
+    /// Long-pressed message whose action sheet is up.
+    @State private var actionTarget: Message?
     @State private var deleteFailed = false
     @State private var pickedPhoto: PhotosPickerItem?
     @State private var isSendingPhoto = false
@@ -69,6 +71,9 @@ struct ConversationScreen: View {
             }
             // The thread shows through as the snap is swiped away.
             .presentationBackground(.clear)
+        }
+        .sheet(item: $actionTarget) { message in
+            MessageActionsSheet(actions: actions(for: message))
         }
         .confirmationDialog(
             "Delete this \(deleting?.kind == .text ? "message" : deleting?.kind == .video ? "video" : "photo")?",
@@ -128,30 +133,21 @@ struct ConversationScreen: View {
                             isGroup: conversation?.isGroup == true,
                             senderName: (conversation?.isGroup == true && !mine && startsRun) ? conversation?.senderName(of: message) : nil
                         ) {
+                            guard actionTarget == nil else { return }
                             viewing = message
                         }
-                        .contextMenu {
-                            if message.isSnap {
-                                if message.isSaved {
-                                    // Only whoever saved it can take that back.
-                                    if message.savedBy == session.userID {
-                                        Button { Task { await store.setSaved(message, false) } } label: {
-                                            Label("Unsave", systemImage: "bookmark.slash")
-                                        }
-                                    }
-                                } else if mine || message.isUnopenedSnap(for: session.userID) {
-                                    Button { Task { await store.setSaved(message, true) } } label: {
-                                        Label("Save in Chat", systemImage: "bookmark")
-                                    }
-                                }
+                        .padding(4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                .fill(.white.opacity(actionTarget?.id == message.id ? 0.1 : 0))
+                        )
+                        .padding(-4)
+                        .simultaneousGesture(
+                            LongPressGesture(minimumDuration: 0.35).onEnded { _ in
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                actionTarget = message
                             }
-                            // Only your own. Others' messages aren't yours to remove.
-                            if mine {
-                                Button(role: .destructive) { deleting = message } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
-                            }
-                        }
+                        )
                         .id(message.id)
                     }
                 }
@@ -272,6 +268,117 @@ private extension UIImage {
         return UIGraphicsImageRenderer(size: target, format: format).image { _ in
             draw(in: CGRect(origin: .zero, size: target))
         }
+    }
+}
+
+extension ConversationScreen {
+    /// What a long-press offers, Snapchat order: keep it, answer it, copy it,
+    /// then the destructive one last.
+    fileprivate func actions(for message: Message) -> [MessageAction] {
+        let me = session.userID
+        let mine = message.isFromMe(me)
+        var list: [MessageAction] = []
+
+        if message.isSnap {
+            if message.isSaved {
+                // Only whoever saved it can take that back.
+                if message.savedBy == me {
+                    list.append(.init(title: "Unsave", icon: "square.and.arrow.down.fill") {
+                        Task { await store.setSaved(message, false) }
+                    })
+                }
+            } else if mine || message.isUnopenedSnap(for: me) {
+                list.append(.init(title: "Save in Chat", icon: "square.and.arrow.down") {
+                    Task { await store.setSaved(message, true) }
+                })
+            }
+        }
+
+        list.append(.init(title: "Snap Reply", icon: "camera") {
+            afterSheet {
+                camera.captureTarget = conversationID
+                withoutAnimation { isShootingSnap = true }
+            }
+        })
+
+        if message.kind == .text, let body = message.body {
+            list.append(.init(title: "Copy", icon: "doc.on.doc") {
+                UIPasteboard.general.string = body
+            })
+        }
+
+        // Only your own. Others' messages aren't yours to remove.
+        if mine {
+            list.append(.init(title: "Delete", icon: "trash", isDestructive: true) {
+                afterSheet { deleting = message }
+            })
+        }
+        return list
+    }
+
+    /// Presenting straight from a dismissing sheet gets dropped; wait it out.
+    private func afterSheet(_ work: @escaping () -> Void) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
+    }
+}
+
+fileprivate struct MessageAction: Identifiable {
+    let id = UUID()
+    let title: String
+    let icon: String
+    var isDestructive = false
+    let run: () -> Void
+}
+
+/// Snapchat's long-press sheet: big rows, icon then label, hairlines between.
+fileprivate struct MessageActionsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let actions: [MessageAction]
+
+    private let rowHeight: CGFloat = 66
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(actions) { action in
+                Button {
+                    dismiss()
+                    action.run()
+                } label: {
+                    HStack(spacing: 20) {
+                        Image(systemName: action.icon)
+                            .font(.system(size: 22, weight: .regular))
+                            .frame(width: 30)
+                        Text(action.title)
+                            .font(.system(size: 19, weight: .regular))
+                        Spacer()
+                    }
+                    .foregroundStyle(action.isDestructive ? Color(red: 1, green: 0.27, blue: 0.35) : .white)
+                    .padding(.horizontal, 24)
+                    .frame(height: rowHeight)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(MessageActionRowStyle())
+
+                Rectangle()
+                    .fill(.white.opacity(0.1))
+                    .frame(height: 0.5)
+            }
+        }
+        .padding(.top, 28)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .presentationDetents([.height(CGFloat(actions.count) * (rowHeight + 0.5) + 28 + 34)])
+        .presentationDragIndicator(.visible)
+        .presentationCornerRadius(26)
+        .presentationBackground(Color(white: 0.09))
+        .preferredColorScheme(.dark)
+    }
+}
+
+/// Rows darken while pressed, no system highlight.
+private struct MessageActionRowStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(Color.white.opacity(configuration.isPressed ? 0.06 : 0))
     }
 }
 
