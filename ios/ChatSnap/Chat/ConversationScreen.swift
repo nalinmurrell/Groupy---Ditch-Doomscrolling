@@ -495,7 +495,8 @@ private struct MessageRow: View {
                 // Snapchat's tell for "saved": a grey band the width of the
                 // chat, the snap sitting on its sender's side.
                 bubble
-                    .padding(8)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
                     .background(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
                             .fill(Color(red: 0x2B / 255, green: 0x2B / 255, blue: 0x2B / 255))
