@@ -23,6 +23,8 @@ struct ProfileButton: View {
         .accessibilityLabel("Profile")
         .fullScreenCover(isPresented: $isShowingProfile) {
             ProfileScreen()
+                // The app shows behind as the page is swiped away.
+                .presentationBackground(.clear)
         }
     }
 }
@@ -32,6 +34,8 @@ private struct ProfileScreen: View {
     @EnvironmentObject private var session: SessionStore
     @Environment(\.dismiss) private var dismiss
     @State private var isShowingSettings = false
+    /// Follows a rightward swipe; far enough (or flung) and the page closes.
+    @State private var dragOffset: CGFloat = 0
 
     var body: some View {
         NavigationStack {
@@ -48,7 +52,36 @@ private struct ProfileScreen: View {
         }
         // White back chevrons, like Snapchat, rather than iOS blue.
         .tint(.white)
+        .background(Color.black.ignoresSafeArea())
+        .offset(x: dragOffset)
+        .simultaneousGesture(swipeRight)
         .preferredColorScheme(.dark)
+    }
+
+    /// Only on the profile itself — in Settings a right swipe means "back".
+    private var swipeRight: some Gesture {
+        DragGesture(minimumDistance: 20)
+            .onChanged { value in
+                guard !isShowingSettings,
+                      abs(value.translation.width) > abs(value.translation.height) else { return }
+                dragOffset = max(0, value.translation.width)
+            }
+            .onEnded { value in
+                guard !isShowingSettings, dragOffset > 0 else { return }
+                if value.translation.width > 110 || value.predictedEndTranslation.width > 240 {
+                    withAnimation(.easeIn(duration: 0.18)) {
+                        dragOffset = UIScreen.main.bounds.width
+                    }
+                    // Already off screen; skip the cover's own slide.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                        withoutAnimation { dismiss() }
+                    }
+                } else {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        dragOffset = 0
+                    }
+                }
+            }
     }
 
     private var topBar: some View {
