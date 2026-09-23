@@ -46,6 +46,8 @@ private struct ProfileScreen: View {
                 SettingsScreen { dismiss() }
             }
         }
+        // White back chevrons, like Snapchat, rather than iOS blue.
+        .tint(.white)
         .preferredColorScheme(.dark)
     }
 
@@ -105,34 +107,5 @@ private struct ProfileScreen: View {
                 endPoint: .bottom
             )
         )
-    }
-}
-
-/// Settings. For now, just who you're signed in as and the way out.
-private struct SettingsScreen: View {
-    @EnvironmentObject private var session: SessionStore
-    /// Closes the whole profile, so sign-out doesn't leave it up.
-    let onSignOut: () -> Void
-
-    var body: some View {
-        List {
-            if let me = session.me {
-                Section("Account") {
-                    LabeledContent("Name", value: me.displayName)
-                    LabeledContent("Username", value: "@\(me.username)")
-                }
-            }
-            Section {
-                Button("Sign Out", role: .destructive) {
-                    onSignOut()
-                    Task { await session.signOut() }
-                }
-            }
-        }
-        .scrollContentBackground(.hidden)
-        .background(Color.black)
-        .navigationTitle("Settings")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.visible, for: .navigationBar)
     }
 }
