@@ -20,7 +20,9 @@ struct ThreadCameraScreen: View {
             } else {
                 live
                     .offset(y: dragOffset)
-                    .gesture(swipeDown)
+                    // Simultaneous, not .gesture: the viewfinder's double-tap
+                    // (a child gesture) would otherwise win every drag.
+                    .simultaneousGesture(swipeDown)
             }
         }
         .statusBarHidden()
