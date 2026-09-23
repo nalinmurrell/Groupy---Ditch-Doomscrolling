@@ -48,6 +48,9 @@ struct ChatListScreen: View {
                 Text(pinError ?? "")
             }
             .navigationTitle("Chats")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) { ProfileButton(size: 34) }
+            }
             .navigationBarTitleDisplayMode(.large)
             // Floating, bottom-right, clear of the tab bar — thumb territory.
             .overlay(alignment: .bottomTrailing) {

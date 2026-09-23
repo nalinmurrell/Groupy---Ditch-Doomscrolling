@@ -46,8 +46,9 @@ struct CameraScreen: View {
 
     private var controls: some View {
         VStack {
-            // Controls stack down the right edge, Snapchat-style.
-            HStack {
+            // You top-left; controls stack down the right edge, Snapchat-style.
+            HStack(alignment: .top) {
+                ProfileButton()
                 Spacer()
                 VStack(spacing: 14) {
                     CircleButton(

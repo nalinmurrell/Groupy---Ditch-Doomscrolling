@@ -63,6 +63,9 @@ struct FriendsScreen: View {
             }
             .background(Color.black)
             .navigationTitle("Friends")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) { ProfileButton(size: 34) }
+            }
             .navigationBarTitleDisplayMode(.large)
             // iOS 26 would otherwise drop the field to the bottom, under our tab bar.
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search by name or @username")
