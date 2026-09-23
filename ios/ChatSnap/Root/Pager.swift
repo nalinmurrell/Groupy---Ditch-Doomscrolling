@@ -16,6 +16,10 @@ struct Pager<Content: View>: View {
 
     @State private var drag: CGFloat = 0
     @State private var axis: Axis?
+    /// True only while a drag is live. Unlike `onEnded`, this resets when the
+    /// system *cancels* a drag too (a full-screen page opening or closing
+    /// mid-touch), so the pager can never stay locked mid-swipe.
+    @GestureState private var isDragging = false
 
     private let snap = Animation.interactiveSpring(response: 0.32, dampingFraction: 0.86)
 
@@ -28,11 +32,18 @@ struct Pager<Content: View>: View {
             }
             .offset(x: -CGFloat(index) * width + drag)
             .simultaneousGesture(swipe(width: width), including: isSwipeEnabled ? .all : .subviews)
+            .onChange(of: isDragging) { _, live in
+                guard !live, axis != nil || drag != 0 else { return }
+                // Ended without onEnded: cancelled. Put everything back.
+                axis = nil
+                withAnimation(snap) { drag = 0 }
+            }
         }
     }
 
     private func swipe(width: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 12, coordinateSpace: .local)
+            .updating($isDragging) { _, state, _ in state = true }
             .onChanged { value in
                 // Lock to whichever axis the finger commits to first, so a
                 // vertical scroll in a list never drifts the pane sideways.

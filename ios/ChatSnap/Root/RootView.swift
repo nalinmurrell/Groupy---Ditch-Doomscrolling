@@ -22,6 +22,7 @@ struct RootView: View {
     /// Lifted out of the chat pane so the tab bar can get out of the way when
     /// a conversation is pushed.
     @State private var openConversations: [Conversation.ID] = []
+    @State private var isProfileOpen = false
 
     private var isTabBarVisible: Bool {
         !(tab == .chat && !openConversations.isEmpty)
@@ -94,6 +95,20 @@ struct RootView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: isTabBarVisible)
+        // Your profile: a layer over everything, sliding in from the right.
+        .overlay {
+            if isProfileOpen {
+                ProfileScreen(
+                    onClose: { withAnimation(.easeInOut(duration: 0.28)) { isProfileOpen = false } },
+                    onSwipedAway: { withoutAnimation { isProfileOpen = false } }
+                )
+                .transition(.move(edge: .trailing))
+                .zIndex(1)
+            }
+        }
+        .environment(\.openProfile) {
+            withAnimation(.easeInOut(duration: 0.28)) { isProfileOpen = true }
+        }
         .task { camera.start() }
         // Data needs a session; it arrives once restore finishes.
         .task(id: isReady) {

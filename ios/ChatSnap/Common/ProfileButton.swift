@@ -1,14 +1,18 @@
 import SwiftUI
 
+extension EnvironmentValues {
+    /// Opens the profile layer RootView draws over the tabs.
+    @Entry var openProfile: () -> Void = {}
+}
+
 /// Your avatar, top-left on every tab, Snapchat-style. Opens your profile.
 struct ProfileButton: View {
     @EnvironmentObject private var session: SessionStore
+    @Environment(\.openProfile) private var openProfile
     var size: CGFloat = 40
 
-    @State private var isShowingProfile = false
-
     var body: some View {
-        Button { isShowingProfile = true } label: {
+        Button { openProfile() } label: {
             Group {
                 if let me = session.me {
                     Avatar(subject: me, size: size)
@@ -21,18 +25,20 @@ struct ProfileButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Profile")
-        .fullScreenCover(isPresented: $isShowingProfile) {
-            ProfileScreen()
-                // The app shows behind as the page is swiped away.
-                .presentationBackground(.clear)
-        }
     }
 }
 
 /// Your profile: a page of its own, with settings behind the gear.
-private struct ProfileScreen: View {
+///
+/// Drawn by RootView as a layer over the tabs rather than presented with
+/// fullScreenCover: closing a cover mid-gesture left UIKit's presentation
+/// container behind, and the pager stopped receiving swipes.
+struct ProfileScreen: View {
     @EnvironmentObject private var session: SessionStore
-    @Environment(\.dismiss) private var dismiss
+    /// Animated close (the back button, sign-out).
+    let onClose: () -> Void
+    /// Immediate close, for when the page has already been swiped off screen.
+    let onSwipedAway: () -> Void
     @State private var isShowingSettings = false
     /// Follows a rightward swipe; far enough (or flung) and the page closes.
     @State private var dragOffset: CGFloat = 0
@@ -47,7 +53,7 @@ private struct ProfileScreen: View {
             .toolbar(.hidden, for: .navigationBar)
             .overlay(alignment: .top) { topBar }
             .navigationDestination(isPresented: $isShowingSettings) {
-                SettingsScreen { dismiss() }
+                SettingsScreen { onSwipedAway() }
             }
         }
         // White back chevrons, like Snapchat, rather than iOS blue.
@@ -72,10 +78,7 @@ private struct ProfileScreen: View {
                     withAnimation(.easeIn(duration: 0.18)) {
                         dragOffset = UIScreen.main.bounds.width
                     }
-                    // Already off screen; skip the cover's own slide.
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-                        withoutAnimation { dismiss() }
-                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.18, execute: onSwipedAway)
                 } else {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                         dragOffset = 0
@@ -86,7 +89,7 @@ private struct ProfileScreen: View {
 
     private var topBar: some View {
         HStack {
-            Button { dismiss() } label: {
+            Button(action: onClose) {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(.white)
