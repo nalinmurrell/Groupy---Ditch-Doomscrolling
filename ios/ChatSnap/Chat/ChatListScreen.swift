@@ -47,13 +47,13 @@ struct ChatListScreen: View {
             } message: {
                 Text(pinError ?? "")
             }
-            .navigationTitle("Chats")
+            .navigationTitle("Chat")
             // Title centred in the top bar, beside your avatar — Snapchat's header.
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { ProfileButton(size: 34) }
                 ToolbarItem(placement: .principal) {
-                    Text("Chats")
+                    Text("Chat")
                         .font(.system(size: 20, weight: .bold))
                         .foregroundStyle(.white)
                 }
