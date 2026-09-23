@@ -511,10 +511,14 @@ private struct MessageRow: View {
                     .padding(isFromMe ? .trailing : .leading, 10)
             }
             if message.isSnap && message.isSaved {
-                Text(saverName.map { "Saved by \($0)" } ?? "Saved")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.4))
-                    .padding(.horizontal, 6)
+                // Snapchat's wording and look: a centred, spaced-out caps line.
+                Text(saverName.map { "\($0) saved a Snap in Chat!" } ?? "Saved in Chat")
+                    .textCase(.uppercase)
+                    .font(.system(size: 12, weight: .semibold))
+                    .tracking(1.2)
+                    .foregroundStyle(.white.opacity(0.45))
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 4)
             }
         }
     }
