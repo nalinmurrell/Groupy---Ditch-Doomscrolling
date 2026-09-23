@@ -62,7 +62,7 @@ camera, Return-to-send, timestamps). Bump `CURRENT_PROJECT_VERSION` in project.y
 destination upload). App record exists in App Store Connect as "Groupy".
 
 Migrations applied on the live project: friend requests (09-18), groups (09-20), pins (09-20). add-members (09-20). delete-messages (09-20), push (09-21), video (09-21: `kind` admits 'video',
-clips stored at `snaps/<cid>/<uuid>.mov`).
+clips stored at `snaps/<cid>/<uuid>.mov`), snaps opened/saved (09-23).
 Test accounts to delete under Authentication → Users: `probe-1789526196@…`,
 `probe2-…@chatsnap-probe.io`. There is a real group "Groupy Test" between Nalin
 and Probe from verification; leave it from the app.
@@ -94,9 +94,17 @@ bubbles show a first-frame thumbnail with a play badge; the viewer loops it.
 Clips are cached in Caches/snaps. Builds before 4 can't decode `kind = video`
 and their chat list refresh fails once one exists — ship build 4 promptly.
 
-Not yet built anywhere: read receipts
-(`isOpened` was dropped when moving to Supabase), Sign in with Apple, ephemeral
-"tap to view" snaps (photos are plain inline thumbnails for now).
+Snaps (09-23): an unsaved photo/video shows as a status row, never a preview —
+"Tap to view" → one look → "Opened" (sender sees Delivered → Opened / Opened by
+N, live via realtime on `snap_views`). `mark_snap_opened(mid)` records the view;
+`set_snap_saved(mid, saved)` saves in chat (any member; only the saver can
+unsave), and saved snaps are thumbnails viewable any time. All pre-09-23
+photos/videos were marked saved so history stayed visible. "Opened" is a UI
+rule: the file stays in storage and members can still fetch it — true
+ephemerality would need server-side deletion once everyone's opened it.
+
+Not yet built anywhere: read receipts for text, Sign in with Apple, snap
+replays / timers, deleting fully-opened unsaved snap files.
 
 ### Building iOS (Mac)
 

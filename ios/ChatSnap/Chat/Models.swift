@@ -30,7 +30,7 @@ enum UsernameRule {
 }
 
 /// A row in `messages`.
-struct Message: Identifiable, Codable, Hashable {
+struct Message: Identifiable, Decodable, Hashable {
     enum Kind: String, Codable {
         case text, photo, video
     }
@@ -42,6 +42,11 @@ struct Message: Identifiable, Codable, Hashable {
     let body: String?
     let photoPath: String?
     let createdAt: Date
+    /// Saved in chat: viewable by everyone, any number of times.
+    var savedBy: UUID?
+    var savedAt: Date?
+    /// Recipients who've opened it (from `snap_views`).
+    var openedBy: [UUID]
 
     enum CodingKeys: String, CodingKey {
         case id, kind, body
@@ -49,9 +54,41 @@ struct Message: Identifiable, Codable, Hashable {
         case senderID = "sender_id"
         case photoPath = "photo_path"
         case createdAt = "created_at"
+        case savedBy = "saved_by"
+        case savedAt = "saved_at"
+        case snapViews = "snap_views"
+    }
+
+    private struct View: Decodable {
+        let userID: UUID
+        enum CodingKeys: String, CodingKey { case userID = "user_id" }
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        conversationID = try c.decode(UUID.self, forKey: .conversationID)
+        senderID = try c.decode(UUID.self, forKey: .senderID)
+        kind = try c.decode(Kind.self, forKey: .kind)
+        body = try c.decodeIfPresent(String.self, forKey: .body)
+        photoPath = try c.decodeIfPresent(String.self, forKey: .photoPath)
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        savedBy = try c.decodeIfPresent(UUID.self, forKey: .savedBy)
+        savedAt = try c.decodeIfPresent(Date.self, forKey: .savedAt)
+        // Absent on realtime payloads and fresh inserts: nobody's opened it.
+        openedBy = (try c.decodeIfPresent([View].self, forKey: .snapViews) ?? []).map(\.userID)
     }
 
     func isFromMe(_ me: UUID?) -> Bool { senderID == me }
+
+    var isSnap: Bool { kind != .text }
+    var isSaved: Bool { savedAt != nil }
+
+    /// A snap you can still open: someone else's, unsaved, not yet opened.
+    func isUnopenedSnap(for me: UUID?) -> Bool {
+        guard isSnap, !isSaved, let me, senderID != me else { return false }
+        return !openedBy.contains(me)
+    }
 }
 
 /// A conversation with its members and, once opened, its messages.
@@ -98,12 +135,14 @@ struct Conversation: Identifiable, Hashable {
         let mine = last.isFromMe(me)
         let who = isGroup && !mine ? senderName(of: last) : nil
         switch last.kind {
-        case .photo:
-            if mine { return "Sent" }
-            return who.map { "New Snap from \($0)" } ?? "New Snap"
-        case .video:
-            if mine { return "Sent" }
-            return who.map { "New Video from \($0)" } ?? "New Video"
+        case .photo, .video:
+            let noun = last.kind == .video ? "Video" : "Snap"
+            if mine {
+                if last.isSaved { return "Saved" }
+                return last.openedBy.isEmpty ? "Delivered" : "Opened"
+            }
+            if !last.isUnopenedSnap(for: me) { return "Opened" }
+            return who.map { "New \(noun) from \($0)" } ?? "New \(noun)"
         case .text:
             let body = last.body ?? ""
             if mine { return "You: \(body)" }

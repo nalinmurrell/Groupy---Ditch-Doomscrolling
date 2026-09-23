@@ -17,6 +17,8 @@ final class ChatStore: ObservableObject {
     private let imageCache = NSCache<NSString, UIImage>()
     private var realtime: Task<Void, Never>?
     private var deletions: Task<Void, Never>?
+    private var saves: Task<Void, Never>?
+    private var opens: Task<Void, Never>?
     private var membership: Task<Void, Never>?
 
     /// Pinned first (in the order they were pinned), then most recent activity.
@@ -49,7 +51,7 @@ final class ChatStore: ObservableObject {
                 .select("""
                     id, is_group, name,
                     conversation_members ( user_id, pinned_at, profiles ( id, username, display_name ) ),
-                    messages ( id, conversation_id, sender_id, kind, body, photo_path, created_at )
+                    messages ( id, conversation_id, sender_id, kind, body, photo_path, created_at, saved_by, saved_at, snap_views ( user_id ) )
                     """)
                 .order("created_at", ascending: false, referencedTable: "messages")
                 .limit(1, referencedTable: "messages")
@@ -77,7 +79,7 @@ final class ChatStore: ObservableObject {
         do {
             let rows: [Message] = try await client
                 .from("messages")
-                .select()
+                .select("*, snap_views ( user_id )")
                 .eq("conversation_id", value: id.uuidString)
                 .order("created_at", ascending: true)
                 .execute()
@@ -299,6 +301,47 @@ final class ChatStore: ObservableObject {
         return dir.appendingPathComponent(path.replacingOccurrences(of: "/", with: "_"))
     }
 
+    // MARK: - Opening & saving snaps
+
+    /// You've looked at it. Shown as Opened immediately; the server row
+    /// follows (and tells the sender over realtime).
+    func markOpened(_ message: Message) {
+        guard let me = client.auth.currentUser?.id, message.isUnopenedSnap(for: me) else { return }
+        update(message.id) { $0.openedBy.append(me) }
+        Task {
+            struct Params: Encodable { let mid: UUID }
+            _ = try? await client.rpc("mark_snap_opened", params: Params(mid: message.id)).execute()
+        }
+    }
+
+    func setSaved(_ message: Message, _ saved: Bool) async {
+        guard let me = client.auth.currentUser?.id else { return }
+        struct Params: Encodable { let mid: UUID; let saved: Bool }
+        do {
+            try await client.rpc("set_snap_saved", params: Params(mid: message.id, saved: saved)).execute()
+            update(message.id) {
+                $0.savedBy = saved ? me : nil
+                $0.savedAt = saved ? Date() : nil
+            }
+        } catch {
+            // Leave it as it was; the UI never changed.
+        }
+    }
+
+    /// Apply a change to a message wherever it's held: its thread and, if
+    /// it's the latest, the chat list preview.
+    private func update(_ id: Message.ID, _ change: (inout Message) -> Void) {
+        for (cid, thread) in messages {
+            guard let index = thread.firstIndex(where: { $0.id == id }) else { continue }
+            var copy = thread
+            change(&copy[index])
+            messages[cid] = copy
+        }
+        for index in conversations.indices where conversations[index].lastMessage?.id == id {
+            change(&conversations[index].lastMessage!)
+        }
+    }
+
     // MARK: - Deleting
 
     /// Delete one of your own messages for everyone. The photo file goes
@@ -343,7 +386,38 @@ final class ChatStore: ObservableObject {
             let channel = Backend.client.channel("messages")
             let inserts = channel.postgresChange(InsertAction.self, schema: "public", table: "messages")
             let deletes = channel.postgresChange(DeleteAction.self, schema: "public", table: "messages")
+            let updates = channel.postgresChange(UpdateAction.self, schema: "public", table: "messages")
+            let views = channel.postgresChange(InsertAction.self, schema: "public", table: "snap_views")
             guard (try? await channel.subscribeWithError()) != nil else { return }
+
+            // Saved / unsaved in chat.
+            saves = Task { [weak self] in
+                for await change in updates {
+                    guard let self,
+                          let row = try? change.decodeRecord(as: Message.self, decoder: Backend.decoder)
+                    else { continue }
+                    self.update(row.id) {
+                        $0.savedBy = row.savedBy
+                        $0.savedAt = row.savedAt
+                    }
+                }
+            }
+            // Someone opened a snap — the sender's "Delivered" becomes "Opened".
+            opens = Task { [weak self] in
+                struct View: Decodable {
+                    let messageID: UUID
+                    let userID: UUID
+                    enum CodingKeys: String, CodingKey { case messageID = "message_id", userID = "user_id" }
+                }
+                for await insert in views {
+                    guard let self,
+                          let view = try? insert.decodeRecord(as: View.self, decoder: Backend.decoder)
+                    else { continue }
+                    self.update(view.messageID) {
+                        if !$0.openedBy.contains(view.userID) { $0.openedBy.append(view.userID) }
+                    }
+                }
+            }
 
             // A delete only carries the old row's primary key.
             deletions = Task { [weak self] in
@@ -381,6 +455,10 @@ final class ChatStore: ObservableObject {
         realtime = nil
         deletions?.cancel()
         deletions = nil
+        saves?.cancel()
+        saves = nil
+        opens?.cancel()
+        opens = nil
         membership?.cancel()
         membership = nil
     }

@@ -122,12 +122,27 @@ struct ConversationScreen: View {
                         let startsRun = previous?.senderID != message.senderID
                         MessageRow(
                             message: message,
-                            isFromMe: mine,
+                            me: session.userID,
+                            isGroup: conversation?.isGroup == true,
                             senderName: (conversation?.isGroup == true && !mine && startsRun) ? conversation?.senderName(of: message) : nil
                         ) {
                             viewing = message
                         }
                         .contextMenu {
+                            if message.isSnap {
+                                if message.isSaved {
+                                    // Only whoever saved it can take that back.
+                                    if message.savedBy == session.userID {
+                                        Button { Task { await store.setSaved(message, false) } } label: {
+                                            Label("Unsave", systemImage: "bookmark.slash")
+                                        }
+                                    }
+                                } else if mine || message.isUnopenedSnap(for: session.userID) {
+                                    Button { Task { await store.setSaved(message, true) } } label: {
+                                        Label("Save in Chat", systemImage: "bookmark")
+                                    }
+                                }
+                            }
                             // Only your own. Others' messages aren't yours to remove.
                             if mine {
                                 Button(role: .destructive) { deleting = message } label: {
@@ -260,19 +275,29 @@ private extension UIImage {
 
 private struct MessageRow: View {
     let message: Message
-    let isFromMe: Bool
+    let me: UUID?
+    let isGroup: Bool
     var senderName: String? = nil
     let onOpenPhoto: () -> Void
 
+    private var isFromMe: Bool { message.isFromMe(me) }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: isFromMe ? .trailing : .leading, spacing: 3) {
             if let senderName {
                 Text(senderName)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.5))
                     .padding(.leading, 6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             bubble
+            if message.isSnap && message.isSaved {
+                Text("Saved")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.4))
+                    .padding(.horizontal, 6)
+            }
         }
     }
 
@@ -292,32 +317,87 @@ private struct MessageRow: View {
                         in: RoundedRectangle(cornerRadius: 18, style: .continuous)
                     )
 
-            case .photo:
-                Button(action: onOpenPhoto) {
-                    SnapImage(message: message)
-                        .frame(width: 160, height: 240)
-                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            case .photo, .video:
+                if message.isSaved {
+                    savedSnap
+                } else {
+                    SnapStatus(message: message, me: me, isGroup: isGroup, onOpen: onOpenPhoto)
                 }
-                .buttonStyle(.plain)
-
-            case .video:
-                Button(action: onOpenPhoto) {
-                    SnapImage(message: message)
-                        .frame(width: 160, height: 240)
-                        .overlay {
-                            Image(systemName: "play.fill")
-                                .font(.system(size: 22, weight: .bold))
-                                .foregroundStyle(.white)
-                                .frame(width: 52, height: 52)
-                                .background(.black.opacity(0.4), in: Circle())
-                        }
-                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                }
-                .buttonStyle(.plain)
             }
 
             if !isFromMe { Spacer(minLength: 60) }
         }
+    }
+
+    /// Saved in chat: the snap itself, openable any time.
+    private var savedSnap: some View {
+        Button(action: onOpenPhoto) {
+            SnapImage(message: message)
+                .frame(width: 160, height: 240)
+                .overlay {
+                    if message.kind == .video {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 22, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 52, height: 52)
+                            .background(.black.opacity(0.4), in: Circle())
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// An unsaved snap: never a preview, just where it stands. Red for photos,
+/// purple for videos; filled until you've opened it, like Snapchat.
+private struct SnapStatus: View {
+    let message: Message
+    let me: UUID?
+    let isGroup: Bool
+    let onOpen: () -> Void
+
+    private var tint: Color { message.kind == .video ? Color(red: 0.62, green: 0.35, blue: 0.95) : Color(red: 0.95, green: 0.25, blue: 0.3) }
+    private var canOpen: Bool { message.isUnopenedSnap(for: me) }
+
+    private var label: String {
+        if message.isFromMe(me) {
+            let n = message.openedBy.count
+            if n == 0 { return "Delivered" }
+            return isGroup ? "Opened by \(n)" : "Opened"
+        }
+        return canOpen ? "Tap to view" : "Opened"
+    }
+
+    /// Filled = there's something to see (yours: nobody's opened it yet).
+    private var filled: Bool {
+        message.isFromMe(me) ? message.openedBy.isEmpty : canOpen
+    }
+
+    var body: some View {
+        Button(action: onOpen) {
+            HStack(spacing: 8) {
+                Image(systemName: message.isFromMe(me)
+                      ? (filled ? "arrowtriangle.right.fill" : "arrowtriangle.right")
+                      : (filled ? "square.fill" : "square"))
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(tint)
+                Text(message.kind == .video ? "Video" : "Snap")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(tint)
+                Text(label)
+                    .font(.system(size: 14, weight: canOpen ? .semibold : .regular))
+                    .foregroundStyle(.white.opacity(canOpen ? 0.9 : 0.45))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(tint.opacity(canOpen ? 0.9 : 0.35), lineWidth: 1.5)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(!canOpen)
     }
 }
 
@@ -347,10 +427,17 @@ struct SnapImage: View {
 }
 
 private struct PhotoViewer: View {
+    @EnvironmentObject private var store: ChatStore
+    @EnvironmentObject private var session: SessionStore
     @Environment(\.dismiss) private var dismiss
     let message: Message
     var canDelete = false
     var onDelete: () -> Void = {}
+
+    /// The store's copy, so a save made here shows immediately.
+    private var current: Message {
+        store.messages[message.conversationID]?.first { $0.id == message.id } ?? message
+    }
 
     var body: some View {
         ZStack {
@@ -389,9 +476,34 @@ private struct PhotoViewer: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 12)
                 Spacer()
+                saveButton
+                    .padding(.bottom, 24)
             }
         }
         .statusBarHidden()
+        // Looking at it is opening it. Unless it's saved, this is the only look.
+        .onAppear { store.markOpened(message) }
+    }
+
+    @ViewBuilder
+    private var saveButton: some View {
+        let saved = current.isSaved
+        // Anyone can save; only whoever saved it can unsave.
+        if !saved || current.savedBy == session.userID {
+            Button { Task { await store.setSaved(current, !saved) } } label: {
+                Label(saved ? "Saved in Chat" : "Save in Chat", systemImage: saved ? "bookmark.fill" : "bookmark")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(saved ? .black : .white)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 11)
+                    .background(saved ? AnyShapeStyle(.white) : AnyShapeStyle(.black.opacity(0.45)), in: Capsule())
+            }
+            .buttonStyle(.plain)
+        } else {
+            Label("Saved in Chat", systemImage: "bookmark.fill")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.6))
+        }
     }
 }
 
