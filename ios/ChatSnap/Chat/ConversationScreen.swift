@@ -67,6 +67,8 @@ struct ConversationScreen: View {
                 viewing = nil
                 deleting = message
             }
+            // The thread shows through as the snap is swiped away.
+            .presentationBackground(.clear)
         }
         .confirmationDialog(
             "Delete this \(deleting?.kind == .text ? "message" : deleting?.kind == .video ? "video" : "photo")?",
@@ -434,6 +436,9 @@ private struct PhotoViewer: View {
     var canDelete = false
     var onDelete: () -> Void = {}
 
+    /// Follows a downward drag; far enough (or flung) and the snap closes.
+    @State private var dragOffset: CGFloat = 0
+
     /// The store's copy, so a save made here shows immediately.
     private var current: Message {
         store.messages[message.conversationID]?.first { $0.id == message.id } ?? message
@@ -480,9 +485,35 @@ private struct PhotoViewer: View {
                     .padding(.bottom, 24)
             }
         }
+        // Shrinks a little as it's pulled down, like Snapchat.
+        .scaleEffect(1 - min(dragOffset, 400) / 400 * 0.15)
+        .offset(y: dragOffset)
+        .gesture(swipeDown)
         .statusBarHidden()
         // Looking at it is opening it. Unless it's saved, this is the only look.
         .onAppear { store.markOpened(message) }
+    }
+
+    private var swipeDown: some Gesture {
+        DragGesture(minimumDistance: 20)
+            .onChanged { value in
+                dragOffset = max(0, value.translation.height)
+            }
+            .onEnded { value in
+                if value.translation.height > 120 || value.predictedEndTranslation.height > 260 {
+                    withAnimation(.easeIn(duration: 0.18)) {
+                        dragOffset = UIScreen.main.bounds.height
+                    }
+                    // Already off screen; skip the cover's own slide.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                        withoutAnimation { dismiss() }
+                    }
+                } else {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        dragOffset = 0
+                    }
+                }
+            }
     }
 
     @ViewBuilder
