@@ -13,10 +13,7 @@ struct ChatListScreen: View {
             ScrollView {
                 LazyVStack(spacing: 0) {
                     if store.conversations.isEmpty {
-                        Text("Add a friend, or start a group, and it shows up here.")
-                            .font(.system(size: 15))
-                            .foregroundStyle(.white.opacity(0.4))
-                            .multilineTextAlignment(.center)
+                        emptyState
                             .padding(.horizontal, 40)
                             .padding(.top, 80)
                     }
@@ -80,6 +77,29 @@ struct ChatListScreen: View {
             .navigationDestination(for: Conversation.ID.self) { id in
                 ConversationScreen(conversationID: id)
             }
+        }
+    }
+
+    /// Three different empties: still loading, failed, or genuinely none.
+    @ViewBuilder
+    private var emptyState: some View {
+        if store.loadFailed {
+            // The list is .refreshable, so a pull-down is the retry.
+            VStack(spacing: 6) {
+                Text("Couldn't load your chats.")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.8))
+                Text("Pull down to try again.")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.white.opacity(0.45))
+            }
+        } else if !store.hasLoaded {
+            ProgressView().tint(.white.opacity(0.5))
+        } else {
+            Text("Add a friend, or start a group, and it shows up here.")
+                .font(.system(size: 15))
+                .foregroundStyle(.white.opacity(0.4))
+                .multilineTextAlignment(.center)
         }
     }
 

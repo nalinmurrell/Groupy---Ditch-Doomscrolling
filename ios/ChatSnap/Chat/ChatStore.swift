@@ -1,4 +1,5 @@
 import AVFoundation
+import OSLog
 import Supabase
 import SwiftUI
 import UIKit
@@ -13,7 +14,18 @@ final class ChatStore: ObservableObject {
     /// Full history, loaded per conversation on first open.
     @Published private(set) var messages: [Conversation.ID: [Message]] = [:]
 
+    /// False until the chat list has loaded once, so "no chats yet" isn't
+    /// shown while it's still on its way.
+    @Published private(set) var hasLoaded = false
+    /// The last load failed and the list may be stale or empty.
+    @Published private(set) var loadFailed = false
+
     private let client = Backend.client
+    private let log = Logger(subsystem: "com.groupy.app", category: "chats")
+    /// Pending automatic retry after a failed load, if any.
+    private var retry: Task<Void, Never>?
+    private var failedAttempts = 0
+    private static let retryDelays: [Double] = [2, 5, 10]
     private let imageCache = NSCache<NSString, UIImage>()
     private var realtime: Task<Void, Never>?
     private var deletions: Task<Void, Never>?
@@ -60,6 +72,11 @@ final class ChatStore: ObservableObject {
                 .value
             let me = client.auth.currentUser?.id
             conversations = rows.map { $0.conversation(for: me) }
+            hasLoaded = true
+            loadFailed = false
+            failedAttempts = 0
+            retry?.cancel()
+            retry = nil
 
             // Realtime sleeps while the app is in the background, so a loaded
             // thread can be missing messages the list already knows about.
@@ -72,7 +89,24 @@ final class ChatStore: ObservableObject {
                 await loadMessages(for: conversation.id)
             }
         } catch {
-            // Keep whatever we had; the list just goes stale until next pull.
+            // Keep whatever we had, say so, and try again shortly — a first
+            // load that fails (expired session on wake, flaky network) used
+            // to leave the list silently empty until something else refreshed.
+            log.error("chat list refresh failed: \(String(describing: error))")
+            loadFailed = true
+            scheduleRetry()
+        }
+    }
+
+    private func scheduleRetry() {
+        guard retry == nil, failedAttempts < Self.retryDelays.count else { return }
+        let delay = Self.retryDelays[failedAttempts]
+        failedAttempts += 1
+        retry = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard let self, !Task.isCancelled else { return }
+            self.retry = nil
+            await self.refresh()
         }
     }
 
