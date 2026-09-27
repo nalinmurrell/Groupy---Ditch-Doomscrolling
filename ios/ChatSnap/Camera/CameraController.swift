@@ -41,6 +41,9 @@ final class CameraController: NSObject, ObservableObject {
     private let photoOutput = AVCapturePhotoOutput()
     private let movieOutput = AVCaptureMovieFileOutput()
     private var audioInput: AVCaptureDeviceInput?
+    /// Width/height of the screen at capture time. Read off-main by the
+    /// photo delegate, set on main just before each capture.
+    private nonisolated(unsafe) var snapAspect: CGFloat = 9.0 / 19.5
     private var videoInput: AVCaptureDeviceInput?
     private var isConfigured = false
 
@@ -235,6 +238,9 @@ final class CameraController: NSObject, ObservableObject {
 
         let flash = flashMode
         let mirrored = position == .front
+        // What the full-screen preview shows; the photo gets cut to match.
+        let screen = UIScreen.main.bounds.size
+        snapAspect = screen.width / screen.height
 
         sessionQueue.async { [weak self] in
             guard let self else { return }
@@ -417,10 +423,42 @@ extension CameraController: AVCapturePhotoCaptureDelegate {
         didFinishProcessingPhoto photo: AVCapturePhoto,
         error: Error?
     ) {
-        let image = photo.fileDataRepresentation().flatMap(UIImage.init(data:))
+        // Cropped to the screen's shape: the preview fills the screen, but a
+        // sensor can hand back a wider frame than it showed — the square
+        // front cameras on newer iPhones do — which then arrived cropped
+        // sideways. Now what you saw is what's sent, on every model.
+        let image = photo.fileDataRepresentation()
+            .flatMap(UIImage.init(data:))
+            .map { $0.centerCropped(toAspect: snapAspect) }
         publish {
             $0.isCapturing = false
             if let image { $0.snap = Snap(image: image) }
+        }
+    }
+}
+
+extension UIImage {
+    /// The centred slice of this image with the given width/height ratio,
+    /// upright (orientation baked in), at the original resolution.
+    func centerCropped(toAspect aspect: CGFloat) -> UIImage {
+        let w = size.width, h = size.height
+        guard w > 0, h > 0, aspect > 0 else { return self }
+        let target = w / h > aspect
+            ? CGSize(width: (h * aspect).rounded(), height: h)
+            : CGSize(width: w, height: (w / aspect).rounded())
+        // Already that shape (within a pixel or two): leave it alone.
+        if abs(target.width - w) < 2 && abs(target.height - h) < 2 { return self }
+
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = scale
+        format.opaque = true
+        return UIGraphicsImageRenderer(size: target, format: format).image { _ in
+            // draw(in:) applies imageOrientation, so the result is upright.
+            draw(in: CGRect(
+                x: (target.width - w) / 2,
+                y: (target.height - h) / 2,
+                width: w, height: h
+            ))
         }
     }
 }
