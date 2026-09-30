@@ -91,7 +91,13 @@ shutter's press comes from a UIKit recognizer (`PressDetector`) because SwiftUI
 gestures there were delivered ~0.77s late — measured, not guessed. Mic
 permission is requested on the first hold, not at launch. Review loops the clip;
 bubbles show a first-frame thumbnail with a play badge; the viewer loops it.
-Clips are cached in Caches/snaps. Builds before 4 can't decode `kind = video`
+Clips are cached in Caches/snaps.
+Zoom (09-30): pinch the viewfinder (MagnifyGesture; pinching flag in
+@GestureState so a cancelled pinch can't leave paging off — the pager stands
+down while `camera.isPinching`), or while recording slide up from the shutter
+(~80pt per 1x, via PressDetector's moves). Capped at 10x or the device max;
+resets to 1x on flip and when a snap is closed or sent. The simulator feed
+scales so zoom is testable there. Builds before 4 can't decode `kind = video`
 and their chat list refresh fails once one exists — ship build 4 promptly.
 
 Snaps (09-23): an unsaved photo/video shows as a status row, never a preview —

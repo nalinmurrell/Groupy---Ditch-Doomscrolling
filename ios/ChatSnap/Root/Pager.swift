@@ -61,7 +61,11 @@ struct Pager<Content: View>: View {
                 if axis == nil {
                     axis = abs(value.translation.width) > abs(value.translation.height) ? .horizontal : .vertical
                 }
-                guard axis == .horizontal else { return }
+                // Turned off mid-drag (a pinch began): don't move the panes.
+                guard axis == .horizontal, isSwipeEnabled else {
+                    if drag != 0 { withAnimation(snap) { drag = 0 } }
+                    return
+                }
                 if !isPaging { isPaging = true }
 
                 var dx = value.translation.width
@@ -71,7 +75,11 @@ struct Pager<Content: View>: View {
             }
             .onEnded { value in
                 defer { axis = nil }
-                guard axis == .horizontal else { return }
+                guard axis == .horizontal, isSwipeEnabled else {
+                    withAnimation(snap) { drag = 0 }
+                    settle()
+                    return
+                }
 
                 let projected = value.predictedEndTranslation.width
                 var next = index

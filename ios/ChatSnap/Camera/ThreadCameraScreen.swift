@@ -47,14 +47,17 @@ struct ThreadCameraScreen: View {
             Group {
                 if camera.usesSimulatorFeed {
                     SimulatorFeed()
+                        .scaleEffect(camera.zoomFactor)
                 } else {
                     CameraPreview(layer: camera.previewLayer)
                 }
             }
             .ignoresSafeArea()
             .opacity(camera.status == .running ? 1 : 0)
-            // Snapchat muscle memory: double-tap the viewfinder to flip.
+            // Snapchat muscle memory: double-tap the viewfinder to flip,
+            // pinch it to zoom.
             .doubleTap { camera.flipCamera() }
+            .pinchToZoom(camera)
 
             switch camera.status {
             case .denied:
@@ -92,6 +95,7 @@ struct ThreadCameraScreen: View {
                     isEnabled: camera.status == .running,
                     onPressBegan: camera.pressBegan,
                     onHold: camera.holdConfirmed,
+                onPressMoved: camera.pressMoved,
                     onPressEnded: camera.pressEnded
                 )
                 .padding(.bottom, 36)

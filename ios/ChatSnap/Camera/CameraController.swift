@@ -16,6 +16,15 @@ final class CameraController: NSObject, ObservableObject {
     @Published private(set) var status: Status = .starting
     @Published private(set) var isCapturing = false
     @Published private(set) var isRecording = false
+    /// Zoom as a multiple of the lens's widest view. Main thread.
+    @Published private(set) var zoomFactor: CGFloat = 1
+    /// True while two fingers are pinching the viewfinder; the tab pager
+    /// stands down so a sideways pinch doesn't page away.
+    @Published var isPinching = false
+    /// Zoom when the current pinch or shutter-drag began.
+    private var zoomAtGestureStart: CGFloat = 1
+    /// Snapchat stops around here; past it the image is mush anyway.
+    nonisolated static let maxZoom: CGFloat = 10
     @Published private(set) var position: AVCaptureDevice.Position = .back
     @Published var flashMode: AVCaptureDevice.FlashMode = .off
 
@@ -217,7 +226,11 @@ final class CameraController: NSObject, ObservableObject {
 
             let settled = self.videoInput?.device.position ?? .back
             self.orientMovieConnection(mirrored: settled == .front)
-            self.publish { $0.position = settled }
+            self.publish {
+                $0.position = settled
+                // A different lens starts wide; say so.
+                $0.zoomFactor = 1
+            }
         }
     }
 
@@ -267,6 +280,38 @@ final class CameraController: NSObject, ObservableObject {
         }
     }
 
+    // MARK: - Zoom
+
+    func beginZoomGesture() {
+        zoomAtGestureStart = zoomFactor
+    }
+
+    /// Pinch: scale relative to where the pinch started.
+    func zoom(pinchScale: CGFloat) {
+        setZoom(zoomAtGestureStart * pinchScale)
+    }
+
+    /// Recording: slide up from the shutter to zoom in, back down to undo.
+    /// Every 80pt of travel is roughly another 1x.
+    func zoom(slideUp points: CGFloat) {
+        setZoom(zoomAtGestureStart + points / 80)
+    }
+
+    private func setZoom(_ factor: CGFloat) {
+        let clamped = min(max(factor, 1), Self.maxZoom)
+        guard abs(clamped - zoomFactor) > 0.001 else { return }
+        zoomFactor = clamped
+        guard !usesSimulatorFeed else { return }
+        sessionQueue.async { [weak self] in
+            guard let device = self?.videoInput?.device else { return }
+            let upper = min(Self.maxZoom, device.maxAvailableVideoZoomFactor)
+            let z = min(max(clamped, device.minAvailableVideoZoomFactor), upper)
+            guard (try? device.lockForConfiguration()) != nil else { return }
+            device.videoZoomFactor = z
+            device.unlockForConfiguration()
+        }
+    }
+
     // MARK: - Shutter press
 
     // Snapchat's trick: the recorder starts the moment the finger lands, so
@@ -282,12 +327,19 @@ final class CameraController: NSObject, ObservableObject {
     func pressBegan() {
         guard status == .running, !isCapturing, !isRecording, !isPressed else { return }
         isPressed = true
+        zoomAtGestureStart = zoomFactor
         guard !usesSimulatorFeed else { return }
         // Only if the mic question is already settled; a first-ever tap
         // shouldn't pop a permission prompt.
         if AVCaptureDevice.authorizationStatus(for: .audio) != .notDetermined {
             beginFile()
         }
+    }
+
+    /// Finger moved while pressing the shutter. Only zooms once it's a video.
+    func pressMoved(_ offset: CGSize) {
+        guard isRecording else { return }
+        zoom(slideUp: -offset.height)
     }
 
     /// The press crossed the threshold: it's a video now.
@@ -359,6 +411,8 @@ final class CameraController: NSObject, ObservableObject {
     func discardSnap() {
         if let url = snap?.videoURL { try? FileManager.default.removeItem(at: url) }
         snap = nil
+        // Like Snapchat: each new snap starts wide.
+        setZoom(1)
     }
 
     private func captureSimulatorFrame() {

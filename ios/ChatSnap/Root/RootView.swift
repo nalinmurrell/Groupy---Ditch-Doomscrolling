@@ -82,7 +82,7 @@ struct RootView: View {
                     set: { tab = AppTab(rawValue: $0) ?? .camera }
                 ),
                 count: AppTab.allCases.count,
-                isSwipeEnabled: openConversations.isEmpty
+                isSwipeEnabled: openConversations.isEmpty && !camera.isPinching
             ) {
                 ChatListScreen(path: $openConversations)
                 CameraScreen()

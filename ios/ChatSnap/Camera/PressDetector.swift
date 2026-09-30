@@ -7,6 +7,8 @@ import UIKit
 /// latency. A UIKit recognizer gets the touch straight from the window.
 struct PressDetector: UIViewRepresentable {
     let onBegan: () -> Void
+    /// Finger's offset from where it went down (up is negative y).
+    var onMoved: (CGSize) -> Void = { _ in }
     let onEnded: () -> Void
 
     func makeUIView(context: Context) -> UIView {
@@ -28,9 +30,16 @@ struct PressDetector: UIViewRepresentable {
         var parent: PressDetector
         init(parent: PressDetector) { self.parent = parent }
 
+        private var start: CGPoint = .zero
+
         @objc func changed(_ recognizer: UIGestureRecognizer) {
+            let point = recognizer.location(in: recognizer.view)
             switch recognizer.state {
-            case .began: parent.onBegan()
+            case .began:
+                start = point
+                parent.onBegan()
+            case .changed:
+                parent.onMoved(CGSize(width: point.x - start.x, height: point.y - start.y))
             case .ended, .cancelled, .failed: parent.onEnded()
             default: break
             }
@@ -49,6 +58,10 @@ private final class ImmediatePress: UIGestureRecognizer {
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
         guard state == .possible else { return }
         state = .began
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        if state == .began || state == .changed { state = .changed }
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {

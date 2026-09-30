@@ -14,14 +14,17 @@ struct CameraScreen: View {
             Group {
                 if camera.usesSimulatorFeed {
                     SimulatorFeed()
+                        .scaleEffect(camera.zoomFactor)
                 } else {
                     CameraPreview(layer: camera.previewLayer, isActive: camera.captureTarget == nil)
                 }
             }
             .ignoresSafeArea()
             .opacity(camera.status == .running ? 1 : 0)
-            // Snapchat muscle memory: double-tap the viewfinder to flip.
+            // Snapchat muscle memory: double-tap the viewfinder to flip,
+            // pinch it to zoom.
             .doubleTap { camera.flipCamera() }
+            .pinchToZoom(camera)
 
             switch camera.status {
             case .denied:
@@ -73,6 +76,7 @@ struct CameraScreen: View {
                 isEnabled: camera.status == .running && session.me != nil,
                 onPressBegan: camera.pressBegan,
                 onHold: camera.holdConfirmed,
+                onPressMoved: camera.pressMoved,
                 onPressEnded: camera.pressEnded
             )
             .padding(.bottom, AppTabBar.height + 24)
@@ -89,6 +93,7 @@ struct ShutterButton: View {
     let isEnabled: Bool
     let onPressBegan: () -> Void
     let onHold: () -> Void
+    var onPressMoved: (CGSize) -> Void = { _ in }
     let onPressEnded: () -> Void
 
     /// Held longer than this and it's a video, not a photo. Recording is
@@ -119,7 +124,7 @@ struct ShutterButton: View {
         .animation(.easeInOut(duration: 0.25), value: isEnabled)
         .opacity(isEnabled ? 1 : 0.8)
         .overlay {
-            PressDetector(onBegan: began, onEnded: ended)
+            PressDetector(onBegan: began, onMoved: onPressMoved, onEnded: ended)
                 .clipShape(Circle())
         }
         .allowsHitTesting(isEnabled && !isCapturing)
