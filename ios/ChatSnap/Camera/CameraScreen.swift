@@ -73,15 +73,24 @@ struct CameraScreen: View {
 
             Spacer()
 
-            ShutterButton(
-                isCapturing: camera.isCapturing,
-                isRecording: camera.isRecording,
-                isEnabled: camera.status == .running && session.me != nil,
-                onPressBegan: camera.pressBegan,
-                onHold: camera.holdConfirmed,
-                onPressMoved: camera.pressMoved,
-                onPressEnded: camera.pressEnded
-            )
+            // Camera roll left of the shutter, like Snapchat's Memories;
+            // the right side is empty so the shutter stays centred.
+            HStack(spacing: 0) {
+                CameraRollButton { snap in camera.snap = snap }
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.trailing, 28)
+                    .opacity(camera.isRecording ? 0 : 1)
+                ShutterButton(
+                    isCapturing: camera.isCapturing,
+                    isRecording: camera.isRecording,
+                    isEnabled: camera.status == .running && session.me != nil,
+                    onPressBegan: camera.pressBegan,
+                    onHold: camera.holdConfirmed,
+                    onPressMoved: camera.pressMoved,
+                    onPressEnded: camera.pressEnded
+                )
+                Color.clear.frame(maxWidth: .infinity, maxHeight: 1)
+            }
             .padding(.bottom, 20)
         }
     }

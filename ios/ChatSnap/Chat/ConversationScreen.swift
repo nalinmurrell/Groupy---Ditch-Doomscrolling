@@ -263,20 +263,6 @@ func withoutAnimation(_ change: () -> Void) {
     withTransaction(transaction, change)
 }
 
-private extension UIImage {
-    func downscaled(longestEdge: CGFloat) -> UIImage {
-        let longest = max(size.width, size.height)
-        guard longest > longestEdge else { return self }
-        let scale = longestEdge / longest
-        let target = CGSize(width: size.width * scale, height: size.height * scale)
-        let format = UIGraphicsImageRendererFormat.default()
-        format.scale = 1
-        return UIGraphicsImageRenderer(size: target, format: format).image { _ in
-            draw(in: CGRect(origin: .zero, size: target))
-        }
-    }
-}
-
 extension ConversationScreen {
     /// What a long-press offers, Snapchat order: keep it, answer it, copy it,
     /// then the destructive one last.
