@@ -11,9 +11,19 @@ struct Snap: Identifiable {
     let id = UUID()
     let media: Media
     let takenAt = Date()
+    /// Picked from the camera roll rather than shot here. Those keep their
+    /// own shape, so they're shown whole (letterboxed), not filled.
+    let isFromLibrary: Bool
 
-    init(image: UIImage) { media = .photo(image) }
-    init(videoURL: URL) { media = .video(videoURL) }
+    init(image: UIImage, fromLibrary: Bool = false) {
+        media = .photo(image)
+        isFromLibrary = fromLibrary
+    }
+
+    init(videoURL: URL, fromLibrary: Bool = false) {
+        media = .video(videoURL)
+        isFromLibrary = fromLibrary
+    }
 
     var image: UIImage? {
         if case .photo(let image) = media { return image }

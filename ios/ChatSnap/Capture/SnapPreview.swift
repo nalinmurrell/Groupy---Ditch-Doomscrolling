@@ -9,15 +9,17 @@ struct SnapPreview: View {
     var body: some View {
         // Fill from a screen-sized base and clip, otherwise the media widens
         // the whole ZStack and pushes the corner buttons off the edges.
-        Color.clear
+        Color.black
             .overlay {
                 switch snap.media {
                 case .photo(let image):
+                    // Shot here: already the card's shape, so fill. From the
+                    // camera roll: any shape, so show it whole, like Snapchat.
                     Image(uiImage: image)
                         .resizable()
-                        .scaledToFill()
+                        .aspectRatio(contentMode: snap.isFromLibrary ? .fit : .fill)
                 case .video(let url):
-                    LoopingVideo(url: url)
+                    LoopingVideo(url: url, gravity: snap.isFromLibrary ? .resizeAspect : .resizeAspectFill)
                 }
             }
             .clipped()

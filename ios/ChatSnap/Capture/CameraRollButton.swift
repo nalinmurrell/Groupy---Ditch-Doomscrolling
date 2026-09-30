@@ -57,11 +57,11 @@ struct CameraRollButton: View {
                 problem = "Videos can be up to \(Int(Self.maxVideoSeconds)) seconds long."
                 return
             }
-            onPicked(Snap(videoURL: movie.url))
+            onPicked(Snap(videoURL: movie.url, fromLibrary: true))
         } else {
             guard let data = try? await picked.loadTransferable(type: Data.self),
                   let image = UIImage(data: data)?.downscaled(longestEdge: 2048) else { return }
-            onPicked(Snap(image: image))
+            onPicked(Snap(image: image, fromLibrary: true))
         }
     }
 }
