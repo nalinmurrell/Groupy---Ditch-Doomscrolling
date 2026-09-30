@@ -20,6 +20,11 @@ struct Pager<Content: View>: View {
     /// system *cancels* a drag too (a full-screen page opening or closing
     /// mid-touch), so the pager can never stay locked mid-swipe.
     @GestureState private var isDragging = false
+    /// True from the moment a drag commits to sideways until just after it
+    /// settles. The panes are disabled meanwhile, so letting go over a row or
+    /// button doesn't also count as a tap on it (that opened a chat mid-swipe,
+    /// invisibly, and a pushed chat turns paging off — the pager looked stuck).
+    @State private var isPaging = false
 
     private let snap = Animation.interactiveSpring(response: 0.32, dampingFraction: 0.86)
 
@@ -30,6 +35,11 @@ struct Pager<Content: View>: View {
                 content()
                     .frame(width: width)
             }
+            // On the panes only; the swipe gesture below sits outside it.
+            // .disabled, not allowsHitTesting: only disabling stops a tap that
+            // began before the swipe from firing on release. Buttons on the
+            // panes use `.quiet` so this doesn't grey them out.
+            .disabled(isPaging)
             .offset(x: -CGFloat(index) * width + drag)
             .simultaneousGesture(swipe(width: width), including: isSwipeEnabled ? .all : .subviews)
             .onChange(of: isDragging) { _, live in
@@ -37,6 +47,7 @@ struct Pager<Content: View>: View {
                 // Ended without onEnded: cancelled. Put everything back.
                 axis = nil
                 withAnimation(snap) { drag = 0 }
+                settle()
             }
         }
     }
@@ -51,6 +62,7 @@ struct Pager<Content: View>: View {
                     axis = abs(value.translation.width) > abs(value.translation.height) ? .horizontal : .vertical
                 }
                 guard axis == .horizontal else { return }
+                if !isPaging { isPaging = true }
 
                 var dx = value.translation.width
                 // Rubber-band past the ends instead of showing empty space.
@@ -71,6 +83,12 @@ struct Pager<Content: View>: View {
                     index = next
                     drag = 0
                 }
+                settle()
             }
+    }
+
+    /// Re-enable the panes once the finger's release has been and gone.
+    private func settle() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { isPaging = false }
     }
 }

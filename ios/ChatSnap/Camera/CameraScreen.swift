@@ -173,7 +173,7 @@ struct CircleButton: View {
                 .frame(width: 44, height: 44)
                 .background(.black.opacity(0.28), in: Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.quiet)
     }
 }
 

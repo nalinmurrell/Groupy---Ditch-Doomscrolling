@@ -23,7 +23,7 @@ struct ProfileButton: View {
             .overlay(Circle().strokeBorder(.white.opacity(0.9), lineWidth: 2))
             .shadow(color: .black.opacity(0.35), radius: 6, y: 2)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.quiet)
         .accessibilityLabel("Profile")
     }
 }

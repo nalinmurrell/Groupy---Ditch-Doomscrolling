@@ -132,11 +132,20 @@ The Simulator has no camera; `SimulatorFeed.swift` draws a stand-in behind
 `#if targetEnvironment(simulator)`. A real iPhone is needed to see a real feed
 (free Apple ID + Xcode works; builds expire after 7 days).
 
-Mac-specific quirks: the Claude Code iOS Simulator integration fails until
-`sudo xcode-select -s /Applications/Xcode.app/Contents/Developer` is run (needs
-the user's password). Tap injection isn't available either (no AppleScript
-assistive access), so screens behind interaction were verified by temporarily
-patching a driver into a view's `.task`, screenshotting, then reverting.
+Mac-specific quirks (updated 2026-09-30, Xcode 27): the desktop app's iOS
+Simulator panel works — it attaches, screenshots, and injects taps and swipes,
+so gestures can be tested for real. Xcode 27 here ships no Simulator.app; the
+panel is the only window. After an Xcode update a simulator can hang on the
+Apple logo: shut it down, kill the user-owned CoreSimulatorService, reboot it.
+The iPhone 16 Pro sim (D75C9E23…) is signed in as Probe — use it rather than
+typing credentials into a fresh one. Temporary `.task` drivers are still handy
+for states that are hard to reach by tapping.
+
+Tab pager: the panes are `.disabled` for ~0.35s around a sideways swipe so
+releasing over a row can't also tap it (that opened a chat mid-swipe, which
+turns paging off — looked like a stuck pager). `allowsHitTesting` does NOT
+cancel an in-flight tap; `.disabled` does. Buttons on the tabs use
+`.buttonStyle(.quiet)` so disabling doesn't grey them out.
 
 ## Android app — plan (Windows)
 

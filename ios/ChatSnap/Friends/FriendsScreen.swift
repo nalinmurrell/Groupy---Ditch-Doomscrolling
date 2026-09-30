@@ -128,7 +128,7 @@ struct FriendsScreen: View {
                             .padding(.vertical, 7)
                             .background(.white.opacity(0.1), in: Capsule())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.quiet)
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 16)
@@ -261,7 +261,7 @@ private struct Pill: View {
                 .padding(.vertical, 8)
                 .background(filled ? Color.white : Color.white.opacity(0.1), in: Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.quiet)
     }
 }
 
@@ -282,6 +282,6 @@ private struct Round: View {
                 .frame(width: 34, height: 34)
                 .background(.white.opacity(0.1), in: Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.quiet)
     }
 }

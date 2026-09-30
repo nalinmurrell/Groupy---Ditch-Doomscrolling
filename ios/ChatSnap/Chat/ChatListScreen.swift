@@ -22,7 +22,7 @@ struct ChatListScreen: View {
                         NavigationLink(value: conversation.id) {
                             ChatRow(conversation: conversation, me: session.userID)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.quiet)
                         .contextMenu {
                             Button {
                                 togglePin(conversation)
@@ -65,7 +65,7 @@ struct ChatListScreen: View {
                         .background(.white, in: Circle())
                         .shadow(color: .black.opacity(0.5), radius: 10, y: 4)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.quiet)
                 .accessibilityLabel("New Group")
                 .padding(.trailing, 20)
                 .padding(.bottom, AppTabBar.height + 16)
