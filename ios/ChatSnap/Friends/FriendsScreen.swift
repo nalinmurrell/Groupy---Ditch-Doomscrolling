@@ -43,7 +43,7 @@ struct FriendsScreen: View {
                         return r == .none || r == .outgoing
                     }
                     if !others.isEmpty {
-                        SectionHeader(query.isEmpty ? "People on ChatSnap" : "Add Friends")
+                        SectionHeader(query.isEmpty ? "People on Groupy" : "Add Friends")
                         ForEach(others.keyed("other")) { row in
                             let outgoing = friends.relationship(with: row.profile) == .outgoing
                             FriendRow(profile: row.profile, state: outgoing ? .requested : .add, isBusy: busy.contains(row.profile.id),
