@@ -62,13 +62,16 @@ struct FriendsScreen: View {
                 .padding(.bottom, AppTabBar.height + 16)
             }
             .background(Color.black)
-            .navigationTitle("Friends")
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) { ProfileButton(size: 34) }
+            .scrollDismissesKeyboard(.immediately)
+            // Our own header, so the avatar sits exactly where the camera's
+            // does; the search field lives in it rather than in a nav bar.
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                TabHeader(title: "Friends") {
+                    SearchField(text: $query, prompt: "Search by name or @username")
+                        .padding(.horizontal, 16)
+                }
             }
-            .navigationBarTitleDisplayMode(.large)
-            // iOS 26 would otherwise drop the field to the bottom, under our tab bar.
-            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search by name or @username")
             // Re-query on typing (debounced by the task cancelling itself) and
             // whenever the friend list changes, so accepted people drop out.
             .task(id: "\(query)|\(friends.friends.count)") {

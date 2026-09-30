@@ -44,17 +44,11 @@ struct ChatListScreen: View {
             } message: {
                 Text(pinError ?? "")
             }
+            // Still names the back button inside a thread.
             .navigationTitle("Chat")
-            // Title centred in the top bar, beside your avatar — Snapchat's header.
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) { ProfileButton(size: 34) }
-                ToolbarItem(placement: .principal) {
-                    Text("Chat")
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundStyle(.white)
-                }
-            }
+            // Our own header, so the avatar sits exactly where the camera's does.
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) { TabHeader(title: "Chat") }
             // Floating, bottom-right, clear of the tab bar — thumb territory.
             .overlay(alignment: .bottomTrailing) {
                 Button { isCreatingGroup = true } label: {
