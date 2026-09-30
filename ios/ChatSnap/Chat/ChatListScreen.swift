@@ -149,16 +149,15 @@ private struct ChatRow: View {
 }
 
 extension Date {
-    /// Inside a thread: "3:15 PM", "Yesterday 3:15 PM", "Mon 3:15 PM", "Sep 12, 3:15 PM".
-    var threadTimestamp: String {
+    /// Snapchat's day markers in a thread: TODAY, YESTERDAY, SUNDAY, SEP 20.
+    var threadDayLabel: String {
         let cal = Calendar.current
-        let time = formatted(date: .omitted, time: .shortened)
-        if cal.isDateInToday(self) { return time }
-        if cal.isDateInYesterday(self) { return "Yesterday \(time)" }
+        if cal.isDateInToday(self) { return "TODAY" }
+        if cal.isDateInYesterday(self) { return "YESTERDAY" }
         if Date().timeIntervalSince(self) < 60 * 60 * 24 * 7 {
-            return "\(formatted(.dateTime.weekday(.abbreviated))) \(time)"
+            return formatted(.dateTime.weekday(.wide)).uppercased()
         }
-        return "\(formatted(.dateTime.month(.abbreviated).day())), \(time)"
+        return formatted(.dateTime.month(.abbreviated).day()).uppercased()
     }
 
     /// In the chat list: just enough to place it.

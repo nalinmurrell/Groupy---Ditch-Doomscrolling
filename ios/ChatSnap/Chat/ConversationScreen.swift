@@ -121,44 +121,50 @@ struct ConversationScreen: View {
     private var messages: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 10) {
+                // No spacing: a run's bars join into one line, like Snapchat.
+                LazyVStack(alignment: .leading, spacing: 0) {
                     // Snapchat's rule, said once where it applies.
                     Text("Chats disappear once everyone's seen them.\nPress and hold a message to save it.")
                         .font(.system(size: 12))
                         .foregroundStyle(.white.opacity(0.35))
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: .infinity)
-                        .padding(.bottom, 6)
+                        .padding(.bottom, 10)
                     ForEach(Array(thread.enumerated()), id: \.element.id) { index, message in
                         let mine = message.isFromMe(session.userID)
                         let previous = index > 0 ? thread[index - 1] : nil
-                        // A timestamp opens the thread and marks any lull of
-                        // twenty minutes or more — the iMessage rhythm, not a
-                        // time on every bubble.
-                        if previous.map({ message.createdAt.timeIntervalSince($0.createdAt) > 20 * 60 }) ?? true {
-                            Text(message.createdAt.threadTimestamp)
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.35))
+                        let newDay = previous.map {
+                            !Calendar.current.isDate($0.createdAt, inSameDayAs: message.createdAt)
+                        } ?? true
+                        // Snapchat's day markers: TODAY, YESTERDAY, SUNDAY…
+                        if newDay {
+                            Text(message.createdAt.threadDayLabel)
+                                .font(.system(size: 12, weight: .semibold))
+                                .tracking(1.2)
+                                .foregroundStyle(.white.opacity(0.4))
                                 .frame(maxWidth: .infinity)
-                                .padding(.top, index == 0 ? 0 : 10)
+                                .padding(.top, index == 0 ? 0 : 14)
                                 .padding(.bottom, 2)
                         }
-                        // In a group, label the first message of each run from
-                        // someone else — not every bubble, that's noise.
-                        let startsRun = previous?.senderID != message.senderID
+                        // A name header opens each run: a new sender, a new
+                        // day, or a lull of twenty minutes or more.
+                        let lull = previous.map { message.createdAt.timeIntervalSince($0.createdAt) > 20 * 60 } ?? true
+                        let startsRun = newDay || lull || previous?.senderID != message.senderID
                         MessageRow(
                             message: message,
                             me: session.userID,
                             isGroup: conversation?.isGroup == true,
-                            senderName: (conversation?.isGroup == true && !mine && startsRun) ? conversation?.senderName(of: message) : nil,
+                            color: senderColor(of: message),
+                            header: startsRun ? (mine ? "Me" : conversation?.senderName(of: message) ?? "") : nil,
                             saverName: saverName(of: message)
                         ) {
                             guard actionTarget == nil else { return }
                             viewing = message
                         }
+                        .padding(.top, startsRun && !newDay ? 10 : 0)
                         .padding(4)
                         .background(
-                            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
                                 .fill(.white.opacity(actionTarget?.id == message.id ? 0.1 : 0))
                         )
                         .padding(-4)
@@ -325,6 +331,15 @@ extension ConversationScreen {
         return list
     }
 
+    /// Snapchat's colours: you in red; the other person in blue; in a group,
+    /// each member keeps their own colour.
+    fileprivate func senderColor(of message: Message) -> Color {
+        if message.isFromMe(session.userID) { return SnapColors.me }
+        guard conversation?.isGroup == true else { return SnapColors.them }
+        let seed = message.senderID.uuidString.unicodeScalars.reduce(0) { $0 &+ Int($1.value) }
+        return SnapColors.group[seed % SnapColors.group.count]
+    }
+
     /// "you" or the saver's first name, for the caption under a saved snap.
     fileprivate func saverName(of message: Message) -> String? {
         guard let saver = message.savedBy else { return nil }
@@ -474,44 +489,66 @@ private struct MessageActionRowStyle: ButtonStyle {
     }
 }
 
+enum SnapColors {
+    static let me = Color(red: 0.95, green: 0.24, blue: 0.34)
+    static let them = Color(red: 0.05, green: 0.68, blue: 1.0)
+    static let group: [Color] = [
+        them,
+        Color(red: 0.64, green: 0.40, blue: 0.96),
+        Color(red: 0.18, green: 0.78, blue: 0.46),
+        Color(red: 1.0, green: 0.62, blue: 0.16),
+        Color(red: 1.0, green: 0.40, blue: 0.72),
+        Color(red: 0.12, green: 0.78, blue: 0.80),
+    ]
+    static let savedBand = Color(red: 0x2B / 255, green: 0x2B / 255, blue: 0x2B / 255)
+}
+
+/// One message, Snapchat-style: no bubble — left-aligned, a thin bar in the
+/// sender's colour down its edge, and a name header when a run begins.
 private struct MessageRow: View {
     let message: Message
     let me: UUID?
     let isGroup: Bool
-    var senderName: String? = nil
+    let color: Color
+    /// "Me" or the sender's first name, when this message opens a run.
+    var header: String? = nil
     /// Who saved it in chat, if anyone ("you" or a first name).
     var saverName: String? = nil
     let onOpenPhoto: () -> Void
 
-    private var isFromMe: Bool { message.isFromMe(me) }
+    private var showsSavedBand: Bool {
+        message.isSaved && (message.isSnap || message.ephemeral)
+    }
 
     var body: some View {
-        VStack(alignment: isFromMe ? .trailing : .leading, spacing: 3) {
-            if let senderName {
-                Text(senderName)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.5))
-                    .padding(.leading, 6)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(alignment: .leading, spacing: 4) {
+            if let header {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(header)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(color)
+                    Spacer()
+                    Text(message.createdAt.formatted(date: .omitted, time: .shortened))
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white.opacity(0.4))
+                }
             }
-            if message.isSaved && (message.isSnap || message.ephemeral) {
-                // Snapchat's tell for "saved": a grey band the width of the
-                // chat, the snap sitting on its sender's side.
-                bubble
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(Color(red: 0x2B / 255, green: 0x2B / 255, blue: 0x2B / 255))
-                    )
-            } else {
-                bubble
-            }
+
+            content
+                .padding(.leading, 12)
+                .padding(.vertical, showsSavedBand ? 8 : 3)
+                .padding(.trailing, showsSavedBand ? 8 : 0)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                // Saved: Snapchat's grey band, the width of the chat.
+                .background(showsSavedBand ? SnapColors.savedBand : .clear)
+                // The sender's bar, exactly as tall as the message.
+                .overlay(alignment: .leading) {
+                    Rectangle().fill(color).frame(width: 2.5)
+                }
+
             if !message.reactions.isEmpty {
                 ReactionPill(reactions: message.reactions, me: me)
-                    // Tucked up against the bubble's bottom edge.
-                    .padding(.top, -12)
-                    .padding(isFromMe ? .trailing : .leading, 10)
+                    .padding(.leading, 12)
             }
             if message.isSnap && message.isSaved {
                 // Snapchat's wording and look: a centred, spaced-out caps line.
@@ -521,36 +558,25 @@ private struct MessageRow: View {
                     .tracking(1)
                     .foregroundStyle(.white.opacity(0.45))
                     .frame(maxWidth: .infinity)
-                    .padding(.top, 4)
+                    .padding(.top, 2)
             }
         }
     }
 
-    private var bubble: some View {
-        HStack {
-            if isFromMe { Spacer(minLength: 60) }
-
-            switch message.kind {
-            case .text:
-                Text(message.body ?? "")
-                    .font(.system(size: 16))
-                    .foregroundStyle(isFromMe ? .black : .white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 9)
-                    .background(
-                        isFromMe ? Color.white : Color.white.opacity(0.14),
-                        in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    )
-
-            case .photo, .video:
-                if message.isSaved {
-                    savedSnap
-                } else {
-                    SnapStatus(message: message, me: me, isGroup: isGroup, onOpen: onOpenPhoto)
-                }
+    @ViewBuilder
+    private var content: some View {
+        switch message.kind {
+        case .text:
+            Text(message.body ?? "")
+                .font(.system(size: 17))
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+        case .photo, .video:
+            if message.isSaved {
+                savedSnap
+            } else {
+                SnapStatus(message: message, me: me, isGroup: isGroup, onOpen: onOpenPhoto)
             }
-
-            if !isFromMe { Spacer(minLength: 60) }
         }
     }
 
@@ -568,7 +594,7 @@ private struct MessageRow: View {
                             .background(.black.opacity(0.4), in: Circle())
                     }
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .buttonStyle(.plain)
     }
