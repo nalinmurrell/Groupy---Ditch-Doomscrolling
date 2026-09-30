@@ -64,7 +64,7 @@ final class ChatStore: ObservableObject {
                 .select("""
                     id, is_group, name,
                     conversation_members ( user_id, pinned_at, profiles ( id, username, display_name ) ),
-                    messages ( id, conversation_id, sender_id, kind, body, photo_path, created_at, saved_by, saved_at, snap_views ( user_id ) )
+                    messages ( id, conversation_id, sender_id, kind, body, photo_path, created_at, ephemeral, saved_by, saved_at, snap_views ( user_id ) )
                     """)
                 .order("created_at", ascending: false, referencedTable: "messages")
                 .limit(1, referencedTable: "messages")
@@ -361,6 +361,18 @@ final class ChatStore: ObservableObject {
             }
         } catch {
             // Leave it as it was; the UI never changed.
+        }
+    }
+
+    // MARK: - Disappearing chats
+
+    /// You've left a chat: what others sent you there counts as seen, and
+    /// the server deletes any unsaved text everyone has now seen. The
+    /// deletions come back over realtime, for everyone at once.
+    func leaveChat(_ id: Conversation.ID) {
+        Task {
+            struct Params: Encodable { let cid: UUID }
+            _ = try? await client.rpc("leave_chat", params: Params(cid: id)).execute()
         }
     }
 

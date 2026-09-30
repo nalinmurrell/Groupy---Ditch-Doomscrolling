@@ -84,6 +84,8 @@ create table public.messages (
   -- Saved in chat: stays viewable after it's been opened (see snap_views).
   saved_by         uuid references public.profiles (id) on delete set null,
   saved_at         timestamptz,
+  -- Can disappear once seen (see leave_chat). Pre-2026-09-30 rows are false.
+  ephemeral        boolean not null default true,
   check (
     (kind = 'text'  and body is not null and photo_path is null) or
     (kind in ('photo', 'video') and photo_path is not null and body is null)
@@ -556,9 +558,9 @@ begin
   if me is null then raise exception 'not signed in'; end if;
   if not exists (
     select 1 from public.messages m
-    where m.id = mid and m.kind in ('photo', 'video') and public.is_member(m.conversation_id)
+    where m.id = mid and public.is_member(m.conversation_id)
   ) then
-    raise exception 'not a snap in your chats';
+    raise exception 'not a message in your chats';
   end if;
 
   if saved then
@@ -627,3 +629,44 @@ alter table public.account_details enable row level security;
 create policy "only you see and edit your account details"
   on public.account_details for all to authenticated
   using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- ---------------------------------------------------------------------------
+-- Disappearing chats.
+-- ---------------------------------------------------------------------------
+-- Called when you close a chat (or the app goes to the background with it
+-- open): everything others sent you there counts as seen, then any unsaved
+-- text that every other member has now seen is deleted for everyone.
+create function public.leave_chat(cid uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  me uuid := auth.uid();
+begin
+  if me is null then raise exception 'not signed in'; end if;
+  if not public.is_member(cid) then raise exception 'not a member of that chat'; end if;
+
+  insert into public.snap_views (message_id, user_id)
+  select m.id, me
+  from public.messages m
+  where m.conversation_id = cid and m.kind = 'text' and m.sender_id <> me
+  on conflict do nothing;
+
+  delete from public.messages m
+  where m.conversation_id = cid
+    and m.kind = 'text'
+    and m.ephemeral
+    and m.saved_at is null
+    and not exists (
+      select 1 from public.conversation_members cm
+      where cm.conversation_id = cid
+        and cm.user_id <> m.sender_id
+        and not exists (
+          select 1 from public.snap_views v
+          where v.message_id = m.id and v.user_id = cm.user_id
+        )
+    );
+end;
+$$;

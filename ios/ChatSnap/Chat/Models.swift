@@ -42,6 +42,8 @@ struct Message: Identifiable, Decodable, Hashable {
     let body: String?
     let photoPath: String?
     let createdAt: Date
+    /// Can disappear once everyone's seen it (texts from 2026-09-30 on).
+    let ephemeral: Bool
     /// Saved in chat: viewable by everyone, any number of times.
     var savedBy: UUID?
     var savedAt: Date?
@@ -62,6 +64,7 @@ struct Message: Identifiable, Decodable, Hashable {
         case senderID = "sender_id"
         case photoPath = "photo_path"
         case createdAt = "created_at"
+        case ephemeral
         case savedBy = "saved_by"
         case savedAt = "saved_at"
         case snapViews = "snap_views"
@@ -82,6 +85,9 @@ struct Message: Identifiable, Decodable, Hashable {
         body = try c.decodeIfPresent(String.self, forKey: .body)
         photoPath = try c.decodeIfPresent(String.self, forKey: .photoPath)
         createdAt = try c.decode(Date.self, forKey: .createdAt)
+        // Absent means an older payload; treat it as permanent (never
+        // offer to "save" something that can't disappear).
+        ephemeral = try c.decodeIfPresent(Bool.self, forKey: .ephemeral) ?? false
         savedBy = try c.decodeIfPresent(UUID.self, forKey: .savedBy)
         savedAt = try c.decodeIfPresent(Date.self, forKey: .savedAt)
         // Absent on realtime payloads and fresh inserts: nobody's opened it.
@@ -97,6 +103,9 @@ struct Message: Identifiable, Decodable, Hashable {
 
     var isSnap: Bool { kind != .text }
     var isSaved: Bool { savedAt != nil }
+
+    /// A text that will disappear unless someone saves it.
+    var isDisappearingText: Bool { kind == .text && ephemeral && !isSaved }
 
     /// A snap you can still open: someone else's, unsaved, not yet opened.
     func isUnopenedSnap(for me: UUID?) -> Bool {

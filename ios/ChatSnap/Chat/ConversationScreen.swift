@@ -19,6 +19,7 @@ struct ConversationScreen: View {
     @State private var isSendingPhoto = false
     @FocusState private var isComposing: Bool
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     private var conversation: Conversation? { store.conversation(conversationID) }
     private var thread: [Message] { store.messages[conversationID] ?? [] }
@@ -63,6 +64,12 @@ struct ConversationScreen: View {
             if PushManager.shared.activeConversation == conversationID {
                 PushManager.shared.activeConversation = nil
             }
+            // Leaving is what makes seen texts disappear, like Snapchat.
+            store.leaveChat(conversationID)
+        }
+        // Backgrounding the app with the chat open counts as leaving too.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background { store.leaveChat(conversationID) }
         }
         .fullScreenCover(item: $viewing) { message in
             PhotoViewer(message: message, canDelete: message.isFromMe(session.userID)) {
@@ -115,6 +122,13 @@ struct ConversationScreen: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 10) {
+                    // Snapchat's rule, said once where it applies.
+                    Text("Chats disappear once everyone's seen them.\nPress and hold a message to save it.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white.opacity(0.35))
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                        .padding(.bottom, 6)
                     ForEach(Array(thread.enumerated()), id: \.element.id) { index, message in
                         let mine = message.isFromMe(session.userID)
                         let previous = index > 0 ? thread[index - 1] : nil
@@ -271,7 +285,10 @@ extension ConversationScreen {
         let mine = message.isFromMe(me)
         var list: [MessageAction] = []
 
-        if message.isSnap {
+        let canSave = message.isSnap
+            ? (mine || message.isUnopenedSnap(for: me))
+            : message.isDisappearingText
+        if message.isSnap || message.ephemeral {
             if message.isSaved {
                 // Only whoever saved it can take that back.
                 if message.savedBy == me {
@@ -279,7 +296,7 @@ extension ConversationScreen {
                         Task { await store.setSaved(message, false) }
                     })
                 }
-            } else if mine || message.isUnopenedSnap(for: me) {
+            } else if canSave {
                 list.append(.init(title: "Save in Chat", icon: "square.and.arrow.down") {
                     Task { await store.setSaved(message, true) }
                 })
@@ -477,7 +494,7 @@ private struct MessageRow: View {
                     .padding(.leading, 6)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            if message.isSnap && message.isSaved {
+            if message.isSaved && (message.isSnap || message.ephemeral) {
                 // Snapchat's tell for "saved": a grey band the width of the
                 // chat, the snap sitting on its sender's side.
                 bubble

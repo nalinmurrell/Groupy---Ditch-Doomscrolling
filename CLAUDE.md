@@ -62,7 +62,7 @@ camera, Return-to-send, timestamps). Bump `CURRENT_PROJECT_VERSION` in project.y
 destination upload). App record exists in App Store Connect as "Groupy".
 
 Migrations applied on the live project: friend requests (09-18), groups (09-20), pins (09-20). add-members (09-20). delete-messages (09-20), push (09-21), video (09-21: `kind` admits 'video',
-clips stored at `snaps/<cid>/<uuid>.mov`), snaps opened/saved (09-23), reactions (09-23), account details (09-23).
+clips stored at `snaps/<cid>/<uuid>.mov`), snaps opened/saved (09-23), reactions (09-23), account details (09-23), disappearing chats (09-30).
 Test accounts to delete under Authentication → Users: `probe-1789526196@…`,
 `probe2-…@chatsnap-probe.io`. There is a real group "Groupy Test" between Nalin
 and Probe from verification; leave it from the app.
@@ -126,6 +126,13 @@ is owner-only (profiles are readable by every signed-in user, so private
 fields must never go there). Email changes go through Supabase Auth and may
 wait on a confirmation link. "Manage Groupy+" is a placeholder page — there is
 no subscription and nothing is charged.
+
+Disappearing chats (09-30): `messages.ephemeral` (default true; every row
+before 09-30 set false = permanent). Closing a thread (or backgrounding with it
+open) calls `leave_chat(cid)`: records views of others' texts in `snap_views`,
+then deletes unsaved ephemeral texts every other member has viewed — realtime
+delete events clear them everywhere. `set_snap_saved` now saves any kind. Builds
+before this never call leave_chat, so texts to those users simply stay.
 
 Not yet built anywhere: read receipts for text, Sign in with Apple, snap
 replays / timers, deleting fully-opened unsaved snap files.
