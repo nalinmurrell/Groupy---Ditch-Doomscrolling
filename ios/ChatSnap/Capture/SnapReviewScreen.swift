@@ -14,50 +14,54 @@ struct SnapReviewScreen: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            SnapPreview(snap: snap)
+            CameraCard {
+                ZStack {
+                    SnapPreview(snap: snap)
 
-            VStack {
-                HStack {
-                    Button(action: camera.discardSnap) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 44, height: 44)
-                            .background(.black.opacity(0.28), in: Circle())
-                    }
-                    .buttonStyle(.plain)
-                    Spacer()
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 12)
-
-                Spacer()
-
-                HStack {
-                    Spacer()
-                    Button {
-                        isPickingRecipients = true
-                    } label: {
-                        HStack(spacing: 8) {
-                            Text(isSending ? "Sending…" : "Send To")
-                                .font(.system(size: 16, weight: .semibold))
-                            if isSending {
-                                ProgressView().tint(.black).controlSize(.small)
-                            } else {
-                                Image(systemName: "paperplane.fill")
-                                    .font(.system(size: 14, weight: .bold))
+                    VStack {
+                        HStack {
+                            Button(action: camera.discardSnap) {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 44, height: 44)
+                                    .background(.black.opacity(0.28), in: Circle())
                             }
+                            .buttonStyle(.plain)
+                            Spacer()
                         }
-                        .foregroundStyle(.black)
                         .padding(.horizontal, 20)
-                        .padding(.vertical, 14)
-                        .background(.white, in: Capsule())
+                        .padding(.top, 12)
+
+                        Spacer()
+
+                        HStack {
+                            Spacer()
+                            Button {
+                                isPickingRecipients = true
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Text(isSending ? "Sending…" : "Send To")
+                                        .font(.system(size: 16, weight: .semibold))
+                                    if isSending {
+                                        ProgressView().tint(.black).controlSize(.small)
+                                    } else {
+                                        Image(systemName: "paperplane.fill")
+                                            .font(.system(size: 14, weight: .bold))
+                                    }
+                                }
+                                .foregroundStyle(.black)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 14)
+                                .background(.white, in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(isSending)
+                        }
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 28)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(isSending)
                 }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 28)
             }
         }
         // fullScreenCover presents outside RootView, so the status bar has to

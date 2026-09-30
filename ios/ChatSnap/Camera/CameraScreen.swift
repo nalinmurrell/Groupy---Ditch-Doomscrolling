@@ -11,28 +11,31 @@ struct CameraScreen: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            Group {
-                if camera.usesSimulatorFeed {
-                    SimulatorFeed()
-                        .scaleEffect(camera.zoomFactor)
-                } else {
-                    CameraPreview(layer: camera.previewLayer, isActive: camera.captureTarget == nil)
-                }
-            }
-            .ignoresSafeArea()
-            .opacity(camera.status == .running ? 1 : 0)
-            // Snapchat muscle memory: double-tap the viewfinder to flip,
-            // pinch it to zoom.
-            .doubleTap { camera.flipCamera() }
-            .pinchToZoom(camera)
+            CameraCard {
+                ZStack {
+                    Group {
+                        if camera.usesSimulatorFeed {
+                            SimulatorFeed()
+                                .scaleEffect(camera.zoomFactor)
+                        } else {
+                            CameraPreview(layer: camera.previewLayer, isActive: camera.captureTarget == nil)
+                        }
+                    }
+                    .opacity(camera.status == .running ? 1 : 0)
+                    // Snapchat muscle memory: double-tap the viewfinder to flip,
+                    // pinch it to zoom.
+                    .doubleTap { camera.flipCamera() }
+                    .pinchToZoom(camera)
 
-            switch camera.status {
-            case .denied:
-                PermissionPrompt()
-            case .failed(let message):
-                MessagePlate(text: message)
-            case .starting, .running:
-                controls
+                    switch camera.status {
+                    case .denied:
+                        PermissionPrompt()
+                    case .failed(let message):
+                        MessagePlate(text: message)
+                    case .starting, .running:
+                        controls
+                    }
+                }
             }
         }
         // While the in-thread camera is up, its snap isn't ours to show.
@@ -79,7 +82,7 @@ struct CameraScreen: View {
                 onPressMoved: camera.pressMoved,
                 onPressEnded: camera.pressEnded
             )
-            .padding(.bottom, AppTabBar.height + 24)
+            .padding(.bottom, 20)
         }
     }
 }

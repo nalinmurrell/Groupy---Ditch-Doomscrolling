@@ -44,61 +44,64 @@ struct ThreadCameraScreen: View {
             // through underneath (the cover's background is clear).
             Color.black.ignoresSafeArea()
 
-            Group {
-                if camera.usesSimulatorFeed {
-                    SimulatorFeed()
-                        .scaleEffect(camera.zoomFactor)
-                } else {
-                    CameraPreview(layer: camera.previewLayer)
-                }
-            }
-            .ignoresSafeArea()
-            .opacity(camera.status == .running ? 1 : 0)
-            // Snapchat muscle memory: double-tap the viewfinder to flip,
-            // pinch it to zoom.
-            .doubleTap { camera.flipCamera() }
-            .pinchToZoom(camera)
+            CameraCard {
+                ZStack {
+                    Group {
+                        if camera.usesSimulatorFeed {
+                            SimulatorFeed()
+                                .scaleEffect(camera.zoomFactor)
+                        } else {
+                            CameraPreview(layer: camera.previewLayer)
+                        }
+                    }
+                    .opacity(camera.status == .running ? 1 : 0)
+                    // Snapchat muscle memory: double-tap the viewfinder to flip,
+                    // pinch it to zoom.
+                    .doubleTap { camera.flipCamera() }
+                    .pinchToZoom(camera)
 
-            switch camera.status {
-            case .denied:
-                PermissionPrompt()
-            case .failed(let message):
-                MessagePlate(text: message)
-            case .starting, .running:
-                EmptyView()
-            }
+                    switch camera.status {
+                    case .denied:
+                        PermissionPrompt()
+                    case .failed(let message):
+                        MessagePlate(text: message)
+                    case .starting, .running:
+                        EmptyView()
+                    }
 
-            VStack {
-                HStack {
-                    CircleButton(systemName: "xmark", action: close)
-                    Spacer()
-                    VStack(spacing: 14) {
-                        CircleButton(
-                            systemName: "arrow.triangle.2.circlepath.camera.fill",
-                            action: camera.flipCamera
+                    VStack {
+                        HStack(alignment: .top) {
+                            CircleButton(systemName: "xmark", action: close)
+                            Spacer()
+                            VStack(spacing: 14) {
+                                CircleButton(
+                                    systemName: "arrow.triangle.2.circlepath.camera.fill",
+                                    action: camera.flipCamera
+                                )
+                                CircleButton(
+                                    systemName: camera.flashMode == .on ? "bolt.fill" : "bolt.slash.fill",
+                                    isActive: camera.flashMode == .on,
+                                    action: camera.toggleFlash
+                                )
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.top, 12)
+
+                        Spacer()
+
+                        ShutterButton(
+                            isCapturing: camera.isCapturing,
+                            isRecording: camera.isRecording,
+                            isEnabled: camera.status == .running,
+                            onPressBegan: camera.pressBegan,
+                            onHold: camera.holdConfirmed,
+                        onPressMoved: camera.pressMoved,
+                            onPressEnded: camera.pressEnded
                         )
-                        CircleButton(
-                            systemName: camera.flashMode == .on ? "bolt.fill" : "bolt.slash.fill",
-                            isActive: camera.flashMode == .on,
-                            action: camera.toggleFlash
-                        )
+                        .padding(.bottom, 36)
                     }
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 12)
-
-                Spacer()
-
-                ShutterButton(
-                    isCapturing: camera.isCapturing,
-                    isRecording: camera.isRecording,
-                    isEnabled: camera.status == .running,
-                    onPressBegan: camera.pressBegan,
-                    onHold: camera.holdConfirmed,
-                onPressMoved: camera.pressMoved,
-                    onPressEnded: camera.pressEnded
-                )
-                .padding(.bottom, 36)
             }
         }
     }
@@ -132,48 +135,52 @@ struct ThreadCameraScreen: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            SnapPreview(snap: snap)
+            CameraCard {
+                ZStack {
+                    SnapPreview(snap: snap)
 
-            VStack {
-                HStack {
-                    CircleButton(systemName: "xmark", action: camera.discardSnap)
-                    Spacer()
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 12)
-
-                Spacer()
-
-                HStack {
-                    Spacer()
-                    Button {
-                        isSending = true
-                        Task {
-                            await store.send(snap, to: [conversationID])
-                            camera.discardSnap()
-                            close()
+                    VStack {
+                        HStack {
+                            CircleButton(systemName: "xmark", action: camera.discardSnap)
+                            Spacer()
                         }
-                    } label: {
-                        HStack(spacing: 8) {
-                            Text(isSending ? "Sending…" : "Send")
-                                .font(.system(size: 16, weight: .semibold))
-                            if isSending {
-                                ProgressView().tint(.black).controlSize(.small)
-                            } else {
-                                Image(systemName: "paperplane.fill")
-                                    .font(.system(size: 14, weight: .bold))
-                            }
-                        }
-                        .foregroundStyle(.black)
                         .padding(.horizontal, 20)
-                        .padding(.vertical, 14)
-                        .background(.white, in: Capsule())
+                        .padding(.top, 12)
+
+                        Spacer()
+
+                        HStack {
+                            Spacer()
+                            Button {
+                                isSending = true
+                                Task {
+                                    await store.send(snap, to: [conversationID])
+                                    camera.discardSnap()
+                                    close()
+                                }
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Text(isSending ? "Sending…" : "Send")
+                                        .font(.system(size: 16, weight: .semibold))
+                                    if isSending {
+                                        ProgressView().tint(.black).controlSize(.small)
+                                    } else {
+                                        Image(systemName: "paperplane.fill")
+                                            .font(.system(size: 14, weight: .bold))
+                                    }
+                                }
+                                .foregroundStyle(.black)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 14)
+                                .background(.white, in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(isSending)
+                        }
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 28)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(isSending)
                 }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 28)
             }
         }
     }

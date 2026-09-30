@@ -92,6 +92,11 @@ gestures there were delivered ~0.77s late — measured, not guessed. Mic
 permission is requested on the first hold, not at launch. Review loops the clip;
 bubbles show a first-frame thumbnail with a play badge; the viewer loops it.
 Clips are cached in Caches/snaps.
+Viewfinder (09-30): `CameraCard` — a 9:16 card under the status bar, top
+corners rounded, ending at the tab bar (Snapchat's layout, not the full tall
+screen). Main camera, in-chat camera and review all use it; photos are
+centre-cropped to the card's exact aspect (`camera.viewfinderAspect`), and
+1080p video is already 9:16.
 Zoom (09-30): pinch the viewfinder (MagnifyGesture; pinching flag in
 @GestureState so a cancelled pinch can't leave paging off — the pager stands
 down while `camera.isPinching`), or while recording slide up from the shutter

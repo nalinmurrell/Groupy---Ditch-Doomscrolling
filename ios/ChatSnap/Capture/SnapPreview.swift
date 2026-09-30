@@ -1,7 +1,7 @@
 import AVFoundation
 import SwiftUI
 
-/// What was just captured, filling the screen: a still, or a clip that
+/// What was just captured, filling its frame (the camera card): a still, or a clip that
 /// loops with sound.
 struct SnapPreview: View {
     let snap: Snap
@@ -21,7 +21,6 @@ struct SnapPreview: View {
                 }
             }
             .clipped()
-            .ignoresSafeArea()
     }
 }
 

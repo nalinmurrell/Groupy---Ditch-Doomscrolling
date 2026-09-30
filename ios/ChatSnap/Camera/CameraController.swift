@@ -50,9 +50,11 @@ final class CameraController: NSObject, ObservableObject {
     private let photoOutput = AVCapturePhotoOutput()
     private let movieOutput = AVCaptureMovieFileOutput()
     private var audioInput: AVCaptureDeviceInput?
-    /// Width/height of the screen at capture time. Read off-main by the
+    /// Width/height of the on-screen viewfinder (see CameraCard). Main thread.
+    var viewfinderAspect: CGFloat = 9.0 / 16.0
+    /// Width/height of the viewfinder at capture time. Read off-main by the
     /// photo delegate, set on main just before each capture.
-    private nonisolated(unsafe) var snapAspect: CGFloat = 9.0 / 19.5
+    private nonisolated(unsafe) var snapAspect: CGFloat = 9.0 / 16.0
     private var videoInput: AVCaptureDeviceInput?
     private var isConfigured = false
 
@@ -251,9 +253,8 @@ final class CameraController: NSObject, ObservableObject {
 
         let flash = flashMode
         let mirrored = position == .front
-        // What the full-screen preview shows; the photo gets cut to match.
-        let screen = UIScreen.main.bounds.size
-        snapAspect = screen.width / screen.height
+        // What the viewfinder card shows; the photo gets cut to match.
+        snapAspect = viewfinderAspect
 
         sessionQueue.async { [weak self] in
             guard let self else { return }
@@ -477,7 +478,7 @@ extension CameraController: AVCapturePhotoCaptureDelegate {
         didFinishProcessingPhoto photo: AVCapturePhoto,
         error: Error?
     ) {
-        // Cropped to the screen's shape: the preview fills the screen, but a
+        // Cropped to the viewfinder's shape: the preview fills its card, but a
         // sensor can hand back a wider frame than it showed — the square
         // front cameras on newer iPhones do — which then arrived cropped
         // sideways. Now what you saw is what's sent, on every model.
