@@ -13,7 +13,7 @@ struct SetupNeededScreen: View {
                 Text("Connect Supabase")
                     .font(.system(size: 26, weight: .bold))
                     .foregroundStyle(.white)
-                Text("ChatSnap needs a project URL and anon key before it can sign anyone in.")
+                Text("Groupy needs a project URL and anon key before it can sign anyone in.")
                     .font(.system(size: 15))
                     .foregroundStyle(.white.opacity(0.6))
 

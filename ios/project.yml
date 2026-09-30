@@ -39,9 +39,9 @@ targets:
         UIStatusBarStyle: UIStatusBarStyleLightContent
         UIViewControllerBasedStatusBarAppearance: false
         UIUserInterfaceStyle: Dark
-        NSCameraUsageDescription: ChatSnap opens straight to the camera so you can send a photo to your group in one tap.
-        NSMicrophoneUsageDescription: ChatSnap needs the microphone to record sound with your videos.
-        NSPhotoLibraryAddUsageDescription: ChatSnap saves snaps you choose to keep to your photo library.
+        NSCameraUsageDescription: Groupy opens straight to the camera so you can send a photo to your group in one tap.
+        NSMicrophoneUsageDescription: Groupy needs the microphone to record sound with your videos.
+        NSPhotoLibraryAddUsageDescription: Groupy saves snaps you choose to keep to your photo library.
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.groupy.app

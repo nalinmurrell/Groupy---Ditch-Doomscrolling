@@ -190,7 +190,7 @@ struct PermissionPrompt: View {
         VStack(spacing: 16) {
             Image(systemName: "camera.fill")
                 .font(.system(size: 40))
-            Text("ChatSnap needs the camera")
+            Text("Groupy needs the camera")
                 .font(.title3.weight(.semibold))
             Text("It's the whole app. Turn it on in Settings and come back.")
                 .font(.subheadline)
