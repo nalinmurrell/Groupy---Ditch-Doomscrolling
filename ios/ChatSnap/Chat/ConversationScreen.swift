@@ -34,7 +34,12 @@ struct ConversationScreen: View {
         VStack(spacing: 0) {
             messages
             if let conversation, conversation.isGroup {
-                ChatMembersBar(members: conversation.members, here: presence.here, color: memberColor)
+                // Everyone but you: you know you're here.
+                ChatMembersBar(
+                    members: conversation.members.filter { $0.id != session.userID },
+                    here: presence.here,
+                    color: memberColor
+                )
             }
             composer
         }

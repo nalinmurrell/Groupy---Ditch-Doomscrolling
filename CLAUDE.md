@@ -166,8 +166,8 @@ photo icon. `Message.Kind` now decodes unknown kinds
 as `.unsupported` ("Update Groupy to see this") — builds up to 4 don't, so a
 voice note breaks their thread/list decode until they update to 5+.
 
-Chat presence (10-01): in groups, a scrollable row of member pills sits above
-the composer (Snapchat's); whoever has the chat open is lit in their colour
+Chat presence (10-01): in groups, a scrollable row of member pills (everyone but
+you) sits above the composer (Snapchat's); whoever has the chat open is lit in their colour
 (`memberColor`, same as their messages). Realtime presence on a *private*
 channel `chat:<cid>`, keyed by user id; RLS policies on `realtime.messages`
 let only members join/see it. Joined while the thread is open and the app
