@@ -131,7 +131,27 @@ final class VoicePlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
     static let shared = VoicePlayer()
 
     @Published private(set) var playingID: Message.ID?
+    /// 1×, 1.5× or 2×, like Snapchat. Sticks for the next note, and the
+    /// next launch.
+    @Published private(set) var rate: Float
     private var player: AVAudioPlayer?
+
+    static let rates: [Float] = [1, 1.5, 2]
+    private static let rateKey = "voiceNoteRate"
+
+    override init() {
+        let saved = UserDefaults.standard.float(forKey: Self.rateKey)
+        rate = Self.rates.contains(saved) ? saved : 1
+        super.init()
+    }
+
+    /// 1× → 1.5× → 2× → 1×, applied to whatever's playing.
+    func cycleRate() {
+        let index = Self.rates.firstIndex(of: rate) ?? 0
+        rate = Self.rates[(index + 1) % Self.rates.count]
+        player?.rate = rate
+        UserDefaults.standard.set(rate, forKey: Self.rateKey)
+    }
 
     /// How far through the current note, 0…1.
     var progress: Double {
@@ -139,9 +159,10 @@ final class VoicePlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
         return player.currentTime / player.duration
     }
 
+    /// Real time left, so at 2× it counts down twice as fast.
     var remaining: TimeInterval {
         guard let player else { return 0 }
-        return player.duration - player.currentTime
+        return (player.duration - player.currentTime) / Double(rate)
     }
 
     func toggle(_ id: Message.ID, url: URL) {
@@ -157,6 +178,9 @@ final class VoicePlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
         try? AVAudioSession.sharedInstance().setActive(true)
         guard let player = try? AVAudioPlayer(contentsOf: url) else { return }
         player.delegate = self
+        // Must be on before play for rate to take.
+        player.enableRate = true
+        player.rate = rate
         guard player.play() else { return }
         self.player = player
         playingID = id
@@ -226,6 +250,43 @@ struct VoiceNoteView: View {
     private var isPlaying: Bool { player.playingID == message.id }
 
     var body: some View {
+        HStack(spacing: 10) {
+            playButton
+            if isPlaying {
+                speedButton
+                    .transition(.opacity.combined(with: .scale(scale: 0.8)))
+            }
+        }
+        .animation(.easeOut(duration: 0.15), value: isPlaying)
+        .task(id: message.id) {
+            url = await store.file(for: message)
+            info = await store.voiceNote(for: message)
+        }
+    }
+
+    /// Snapchat's speed chip: shows while playing, tap to step through.
+    private var speedButton: some View {
+        Button { player.cycleRate() } label: {
+            Text(Self.rateLabel(player.rate))
+                .font(.system(size: 12, weight: .bold))
+                .monospacedDigit()
+                .foregroundStyle(.white)
+                // Swap the label outright; a crossfade ghosts the old one.
+                .contentTransition(.identity)
+                .frame(minWidth: 38)
+                .padding(.vertical, 5)
+                .background(.white.opacity(0.15), in: Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Playback speed \(Self.rateLabel(player.rate))")
+    }
+
+    static func rateLabel(_ rate: Float) -> String {
+        rate == 1.5 ? "1.5x" : "\(Int(rate))x"
+    }
+
+    private var playButton: some View {
         Button {
             guard let url, !isPicked else { return }
             player.toggle(message.id, url: url)
@@ -253,10 +314,6 @@ struct VoiceNoteView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .task(id: message.id) {
-            url = await store.file(for: message)
-            info = await store.voiceNote(for: message)
-        }
     }
 
     private func waveform(progress: Double) -> some View {

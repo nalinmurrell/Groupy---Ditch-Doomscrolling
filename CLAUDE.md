@@ -145,7 +145,8 @@ record". `kind = 'audio'`, file at `snaps/<cid>/<uuid>.m4a`; they behave like
 texts, not snaps: no one-look, disappear via `leave_chat` once everyone's seen
 the chat, saveable. The row shows play/pause, a waveform worked out from the
 file (`VoiceNoteInfo`) and the length; one note plays at a time
-(`VoicePlayer`), through the speaker. `Message.Kind` now decodes unknown kinds
+(`VoicePlayer`), through the speaker. While playing, a 1x/1.5x/2x chip cycles the
+speed (kept in UserDefaults); the countdown shows real time left. `Message.Kind` now decodes unknown kinds
 as `.unsupported` ("Update Groupy to see this") — builds up to 4 don't, so a
 voice note breaks their thread/list decode until they update to 5+.
 
