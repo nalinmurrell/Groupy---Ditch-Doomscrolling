@@ -50,6 +50,11 @@ final class CameraController: NSObject, ObservableObject {
     private let photoOutput = AVCapturePhotoOutput()
     private let movieOutput = AVCaptureMovieFileOutput()
     private var audioInput: AVCaptureDeviceInput?
+    /// Asks iOS which way is up for the active camera. Its angle replaces a
+    /// hard-coded 90°, which was right for every older iPhone's sensors but
+    /// turned the square front camera on iPhone 17/18 photos sideways.
+    private var rotationCoordinator: AVCaptureDevice.RotationCoordinator?
+    private var rotationObservation: NSKeyValueObservation?
     /// Width/height of the on-screen viewfinder (see CameraCard). Main thread.
     var viewfinderAspect: CGFloat = 9.0 / 16.0
     /// Width/height of the viewfinder at capture time. Read off-main by the
@@ -155,10 +160,7 @@ final class CameraController: NSObject, ObservableObject {
             }
 
             self.session.commitConfiguration()
-            if let connection = self.previewLayer.connection,
-               connection.isVideoRotationAngleSupported(90) {
-                connection.videoRotationAngle = 90
-            }
+            self.trackRotation(of: device)
             self.orientMovieConnection(mirrored: false)
             self.isConfigured = true
             self.session.startRunning()
@@ -172,13 +174,46 @@ final class CameraController: NSObject, ObservableObject {
             ?? CMVideoDimensions(width: 1920, height: 1080)
     }
 
+    /// Upright for a portrait screen, from the active camera's rotation
+    /// coordinator (90° on most iPhones, but not every sensor is mounted the
+    /// same way). The UI is portrait-only, so the preview angle is the one we
+    /// want for captures too, whichever way the phone is physically held.
+    private var portraitAngle: CGFloat {
+        rotationCoordinator?.videoRotationAngleForHorizonLevelPreview ?? 90
+    }
+
+    /// New coordinator for a new camera; re-orient everything whenever its
+    /// answer changes (e.g. once the preview layer lands in a window).
+    private func trackRotation(of device: AVCaptureDevice) {
+        let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: previewLayer)
+        rotationCoordinator = coordinator
+        rotationObservation = coordinator.observe(\.videoRotationAngleForHorizonLevelPreview, options: [.new]) { [weak self] _, _ in
+            guard let self else { return }
+            self.sessionQueue.async {
+                self.orientMovieConnection(mirrored: self.videoInput?.device.position == .front)
+                self.orientPreview()
+            }
+        }
+        orientPreview()
+    }
+
+    private func orientPreview() {
+        let angle = portraitAngle
+        DispatchQueue.main.async { [previewLayer] in
+            guard let connection = previewLayer.connection,
+                  connection.isVideoRotationAngleSupported(angle) else { return }
+            connection.videoRotationAngle = angle
+        }
+    }
+
     /// Portrait, and mirrored for selfies so the clip matches the preview.
     /// Done once per camera rather than at each record start, which would
     /// add a reconfigure to the hold-to-record latency.
     private func orientMovieConnection(mirrored: Bool) {
         guard let connection = movieOutput.connection(with: .video) else { return }
-        if connection.isVideoRotationAngleSupported(90) {
-            connection.videoRotationAngle = 90
+        let angle = portraitAngle
+        if connection.isVideoRotationAngleSupported(angle) {
+            connection.videoRotationAngle = angle
         }
         if connection.isVideoMirroringSupported {
             connection.automaticallyAdjustsVideoMirroring = false
@@ -227,6 +262,7 @@ final class CameraController: NSObject, ObservableObject {
             self.session.commitConfiguration()
 
             let settled = self.videoInput?.device.position ?? .back
+            if let device = self.videoInput?.device { self.trackRotation(of: device) }
             self.orientMovieConnection(mirrored: settled == .front)
             self.publish {
                 $0.position = settled
@@ -267,8 +303,9 @@ final class CameraController: NSObject, ObservableObject {
 
             if let connection = self.photoOutput.connection(with: .video) {
                 // Snaps are always portrait — the UI is locked to portrait too.
-                if connection.isVideoRotationAngleSupported(90) {
-                    connection.videoRotationAngle = 90
+                let angle = self.portraitAngle
+                if connection.isVideoRotationAngleSupported(angle) {
+                    connection.videoRotationAngle = angle
                 }
                 // Match what the user saw in the mirrored selfie preview.
                 if connection.isVideoMirroringSupported {
