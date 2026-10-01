@@ -75,7 +75,7 @@ struct ConversationScreen: View {
             }
             recorder.cancel()
             VoicePlayer.shared.stop()
-            // Leaving is what makes seen texts disappear, like Snapchat.
+            // Records what you've seen. (Chats no longer disappear.)
             store.leaveChat(conversationID)
         }
         // Backgrounding the app with the chat open counts as leaving too.
@@ -168,13 +168,6 @@ struct ConversationScreen: View {
             ScrollView {
                 // No spacing: a run's bars join into one line, like Snapchat.
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    // Snapchat's rule, said once where it applies.
-                    Text("Chats disappear once everyone's seen them.\nTap a message to save it.")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.white.opacity(0.35))
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: .infinity)
-                        .padding(.bottom, 10)
                     ForEach(Array(thread.enumerated()), id: \.element.id) { index, message in
                         let mine = message.isFromMe(session.userID)
                         let previous = index > 0 ? thread[index - 1] : nil

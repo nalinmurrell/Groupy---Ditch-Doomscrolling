@@ -66,7 +66,7 @@ Settings → Accounts. Bump `CURRENT_PROJECT_VERSION` in project.yml before each
 destination upload). App record exists in App Store Connect as "Groupy".
 
 Migrations applied on the live project: friend requests (09-18), groups (09-20), pins (09-20). add-members (09-20). delete-messages (09-20), push (09-21), video (09-21: `kind` admits 'video',
-clips stored at `snaps/<cid>/<uuid>.mov`), snaps opened/saved (09-23), reactions (09-23), account details (09-23), disappearing chats (09-30), voice notes (10-01).
+clips stored at `snaps/<cid>/<uuid>.mov`), snaps opened/saved (09-23), reactions (09-23), account details (09-23), disappearing chats (09-30), voice notes (10-01), chat presence (10-01), chats stay (10-01).
 Test accounts to delete under Authentication → Users: `probe-1789526196@…`,
 `probe2-…@chatsnap-probe.io`. There is a real group "Groupy Test" between Nalin
 and Probe from verification; leave it from the app.
@@ -131,7 +131,13 @@ fields must never go there). Email changes go through Supabase Auth and may
 wait on a confirmation link. "Manage Groupy+" is a placeholder page — there is
 no subscription and nothing is charged.
 
-Disappearing chats (09-30): `messages.ephemeral` (default true; every row
+Chats stay (10-01): disappearing chats are OFF at Nalin's request. Server-side:
+`ephemeral` defaults false, every row set false, `leave_chat` only records
+views — so old builds stop deleting too. With nothing ephemeral, tap-to-save
+and "Save in Chat" no longer appear for texts/voice notes (snaps unchanged:
+still one look then "Opened", savable). The history below is how it worked.
+
+Disappearing chats (09-30, now off): `messages.ephemeral` (default true; every row
 before 09-30 set false = permanent). Closing a thread (or backgrounding with it
 open) calls `leave_chat(cid)`: records views of others' texts in `snap_views`,
 then deletes unsaved ephemeral texts every other member has viewed — realtime

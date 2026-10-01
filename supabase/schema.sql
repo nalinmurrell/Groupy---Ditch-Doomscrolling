@@ -84,8 +84,9 @@ create table public.messages (
   -- Saved in chat: stays viewable after it's been opened (see snap_views).
   saved_by         uuid references public.profiles (id) on delete set null,
   saved_at         timestamptz,
-  -- Can disappear once seen (see leave_chat). Pre-2026-09-30 rows are false.
-  ephemeral        boolean not null default true,
+  -- Could disappear once seen (2026-09-30 to 2026-10-01). Chats now stay:
+  -- default false, every row false, and leave_chat no longer deletes.
+  ephemeral        boolean not null default false,
   check (
     (kind = 'text'  and body is not null and photo_path is null) or
     (kind in ('photo', 'video', 'audio') and photo_path is not null and body is null)
@@ -634,8 +635,8 @@ create policy "only you see and edit your account details"
 -- Disappearing chats.
 -- ---------------------------------------------------------------------------
 -- Called when you close a chat (or the app goes to the background with it
--- open): everything others sent you there counts as seen, then any unsaved
--- text that every other member has now seen is deleted for everyone.
+-- open): records that you've seen what others sent there. It used to delete
+-- unsaved texts everyone had seen; since 2026-10-01 chats stay.
 create function public.leave_chat(cid uuid)
 returns void
 language plpgsql
@@ -653,21 +654,6 @@ begin
   from public.messages m
   where m.conversation_id = cid and m.kind in ('text', 'audio') and m.sender_id <> me
   on conflict do nothing;
-
-  delete from public.messages m
-  where m.conversation_id = cid
-    and m.kind in ('text', 'audio')
-    and m.ephemeral
-    and m.saved_at is null
-    and not exists (
-      select 1 from public.conversation_members cm
-      where cm.conversation_id = cid
-        and cm.user_id <> m.sender_id
-        and not exists (
-          select 1 from public.snap_views v
-          where v.message_id = m.id and v.user_id = cm.user_id
-        )
-    );
 end;
 $$;
 
