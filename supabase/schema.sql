@@ -77,7 +77,7 @@ create table public.messages (
   id               uuid primary key default gen_random_uuid(),
   conversation_id  uuid not null references public.conversations (id) on delete cascade,
   sender_id        uuid not null references public.profiles (id) on delete cascade,
-  kind             text not null check (kind in ('text', 'photo', 'video')),
+  kind             text not null check (kind in ('text', 'photo', 'video', 'audio')),
   body             text,
   photo_path       text,
   created_at       timestamptz not null default now(),
@@ -88,7 +88,7 @@ create table public.messages (
   ephemeral        boolean not null default true,
   check (
     (kind = 'text'  and body is not null and photo_path is null) or
-    (kind in ('photo', 'video') and photo_path is not null and body is null)
+    (kind in ('photo', 'video', 'audio') and photo_path is not null and body is null)
   )
 );
 
@@ -651,12 +651,12 @@ begin
   insert into public.snap_views (message_id, user_id)
   select m.id, me
   from public.messages m
-  where m.conversation_id = cid and m.kind = 'text' and m.sender_id <> me
+  where m.conversation_id = cid and m.kind in ('text', 'audio') and m.sender_id <> me
   on conflict do nothing;
 
   delete from public.messages m
   where m.conversation_id = cid
-    and m.kind = 'text'
+    and m.kind in ('text', 'audio')
     and m.ephemeral
     and m.saved_at is null
     and not exists (

@@ -25,7 +25,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Groupy opens straight to the camera so you can send a photo to your group in one tap.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Groupy needs the microphone to record sound with your videos.</string>
+	<string>Groupy needs the microphone for voice notes and to record sound with your videos.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Groupy saves snaps you choose to keep to your photo library.</string>
 	<key>UILaunchScreen</key>

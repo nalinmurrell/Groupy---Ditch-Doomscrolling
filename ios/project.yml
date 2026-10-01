@@ -40,7 +40,7 @@ targets:
         UIViewControllerBasedStatusBarAppearance: false
         UIUserInterfaceStyle: Dark
         NSCameraUsageDescription: Groupy opens straight to the camera so you can send a photo to your group in one tap.
-        NSMicrophoneUsageDescription: Groupy needs the microphone to record sound with your videos.
+        NSMicrophoneUsageDescription: Groupy needs the microphone for voice notes and to record sound with your videos.
         NSPhotoLibraryAddUsageDescription: Groupy saves snaps you choose to keep to your photo library.
     settings:
       base:

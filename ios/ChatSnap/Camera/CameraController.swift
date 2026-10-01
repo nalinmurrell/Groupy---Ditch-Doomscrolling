@@ -221,6 +221,18 @@ final class CameraController: NSObject, ObservableObject {
         }
     }
 
+    /// The mic was allowed somewhere else (a voice note): give videos sound
+    /// from now on, not just after the next launch.
+    func microphoneAllowed() {
+        sessionQueue.async { [weak self] in
+            guard let self, self.isConfigured, self.audioInput == nil, !self.movieOutput.isRecording else { return }
+            self.session.beginConfiguration()
+            self.attachMicrophone()
+            self.session.commitConfiguration()
+            self.orientMovieConnection(mirrored: self.videoInput?.device.position == .front)
+        }
+    }
+
     /// Must be called inside begin/commitConfiguration on the session queue.
     private func attachMicrophone() {
         guard audioInput == nil,

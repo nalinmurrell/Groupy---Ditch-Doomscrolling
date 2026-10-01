@@ -32,7 +32,16 @@ enum UsernameRule {
 /// A row in `messages`.
 struct Message: Identifiable, Decodable, Hashable {
     enum Kind: String, Codable {
-        case text, photo, video
+        case text, photo, video, audio
+        /// Something a newer build sent. Shown as a nudge to update rather
+        /// than failing the whole thread's decode (which is what builds up
+        /// to 4 do on a voice note).
+        case unsupported
+
+        init(from decoder: Decoder) throws {
+            let raw = try decoder.singleValueContainer().decode(String.self)
+            self = Kind(rawValue: raw) ?? .unsupported
+        }
     }
 
     let id: UUID
@@ -101,11 +110,12 @@ struct Message: Identifiable, Decodable, Hashable {
 
     func isFromMe(_ me: UUID?) -> Bool { senderID == me }
 
-    var isSnap: Bool { kind != .text }
+    /// A photo or video: one look, then "Opened" unless saved.
+    var isSnap: Bool { kind == .photo || kind == .video }
     var isSaved: Bool { savedAt != nil }
 
-    /// A text that will disappear unless someone saves it.
-    var isDisappearingText: Bool { kind == .text && ephemeral && !isSaved }
+    /// A text or voice note that will disappear unless someone saves it.
+    var isDisappearingChat: Bool { (kind == .text || kind == .audio) && ephemeral && !isSaved }
 
     /// A snap you can still open: someone else's, unsaved, not yet opened.
     func isUnopenedSnap(for me: UUID?) -> Bool {
@@ -170,6 +180,11 @@ struct Conversation: Identifiable, Hashable {
             let body = last.body ?? ""
             if mine { return "You: \(body)" }
             return who.map { "\($0): \(body)" } ?? body
+        case .audio:
+            if mine { return "You: Voice Note" }
+            return who.map { "\($0): Voice Note" } ?? "Voice Note"
+        case .unsupported:
+            return "Update Groupy to see this"
         }
     }
 }

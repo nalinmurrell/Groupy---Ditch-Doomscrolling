@@ -33,7 +33,9 @@ struct PressDetector: UIViewRepresentable {
         private var start: CGPoint = .zero
 
         @objc func changed(_ recognizer: UIGestureRecognizer) {
-            let point = recognizer.location(in: recognizer.view)
+            // Window coordinates, so a view that moves or grows under the
+            // finger (the voice-note mic slides with it) can't skew the offset.
+            let point = recognizer.location(in: nil)
             switch recognizer.state {
             case .began:
                 start = point

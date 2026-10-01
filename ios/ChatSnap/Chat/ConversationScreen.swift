@@ -17,6 +17,11 @@ struct ConversationScreen: View {
     @State private var deleteFailed = false
     @State private var pickedPhoto: PhotosPickerItem?
     @State private var isSendingPhoto = false
+    @StateObject private var recorder = VoiceRecorder()
+    /// The finger's slide left while recording, for slide-to-cancel.
+    @State private var micSlide: CGFloat = 0
+    @State private var voiceFailed = false
+    private let cancelDistance: CGFloat = 110
     @FocusState private var isComposing: Bool
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
@@ -64,12 +69,36 @@ struct ConversationScreen: View {
             if PushManager.shared.activeConversation == conversationID {
                 PushManager.shared.activeConversation = nil
             }
+            recorder.cancel()
+            VoicePlayer.shared.stop()
             // Leaving is what makes seen texts disappear, like Snapchat.
             store.leaveChat(conversationID)
         }
         // Backgrounding the app with the chat open counts as leaving too.
         .onChange(of: scenePhase) { _, phase in
-            if phase == .background { store.leaveChat(conversationID) }
+            if phase == .background {
+                recorder.cancel()
+                VoicePlayer.shared.stop()
+                store.leaveChat(conversationID)
+            }
+        }
+        .onAppear {
+            recorder.onLimitReached = { url in sendVoiceNote(url) }
+        }
+        .alert("Couldn't send voice note", isPresented: $voiceFailed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Check your connection and try again.")
+        }
+        .alert("Microphone is off for Groupy", isPresented: $recorder.micDenied) {
+            Button("Open Settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Turn it on in Settings to send voice notes.")
         }
         .fullScreenCover(item: $viewing) { message in
             PhotoViewer(message: message, canDelete: message.isFromMe(session.userID)) {
@@ -88,7 +117,7 @@ struct ConversationScreen: View {
             }
         }
         .confirmationDialog(
-            "Delete this \(deleting?.kind == .text ? "message" : deleting?.kind == .video ? "video" : "photo")?",
+            "Delete this \(deleting.map(Self.noun) ?? "message")?",
             isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
             titleVisibility: .visible
         ) {
@@ -156,7 +185,8 @@ struct ConversationScreen: View {
                             isGroup: conversation?.isGroup == true,
                             color: senderColor(of: message),
                             header: startsRun ? (mine ? "Me" : conversation?.senderName(of: message) ?? "") : nil,
-                            saverName: saverName(of: message)
+                            saverName: saverName(of: message),
+                            isPicked: actionTarget?.id == message.id
                         ) {
                             guard actionTarget == nil else { return }
                             viewing = message
@@ -212,17 +242,39 @@ struct ConversationScreen: View {
             }
             .buttonStyle(.plain)
 
-            // Single line so Return means send. (A multiline field turns
-            // Return into a newline and never submits.)
-            TextField("Send a message", text: $draft)
-                .textFieldStyle(.plain)
-                .submitLabel(.send)
-                .focused($isComposing)
-                .onSubmit(send)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 9)
-                .background(.white.opacity(0.1), in: Capsule())
-                .foregroundStyle(.white)
+            // The field, with the mic on its right like Snapchat's. While
+            // the mic's held the field becomes the recording strip; the mic
+            // itself stays put so its touch isn't torn down mid-hold.
+            HStack(spacing: 4) {
+                ZStack(alignment: .leading) {
+                    // Single line so Return means send. (A multiline field
+                    // turns Return into a newline and never submits.)
+                    TextField("Send a message", text: $draft)
+                        .textFieldStyle(.plain)
+                        .submitLabel(.send)
+                        .focused($isComposing)
+                        .onSubmit(send)
+                        .foregroundStyle(.white)
+                        .opacity(recorder.isRecording || recorder.showsHint ? 0 : 1)
+                    if recorder.isRecording {
+                        RecordingStrip(
+                            elapsed: recorder.elapsed,
+                            level: recorder.level,
+                            slide: micSlide,
+                            cancelDistance: cancelDistance
+                        )
+                    } else if recorder.showsHint {
+                        Text("Hold to record a voice note")
+                            .font(.system(size: 15))
+                            .foregroundStyle(.white.opacity(0.6))
+                    }
+                }
+                micButton
+            }
+            .padding(.leading, 14)
+            .padding(.trailing, 3)
+            .padding(.vertical, 3)
+            .background(.white.opacity(0.1), in: Capsule())
 
             // Camera roll. The picker runs out of process, so no photo
             // library permission is needed — the user only hands over the
@@ -252,6 +304,45 @@ struct ConversationScreen: View {
         .padding(.top, 8)
         .padding(.bottom, 7)
         .background(Color.black)
+    }
+
+    private var micButton: some View {
+        Image(systemName: "mic.fill")
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundStyle(.white.opacity(recorder.isRecording ? 1 : 0.85))
+            .frame(width: 32, height: 32)
+            .background(recorder.isRecording ? SnapColors.me : .clear, in: Circle())
+            .scaleEffect(recorder.isRecording ? 1.25 : 1)
+            .offset(x: micSlide)
+            .animation(.spring(response: 0.25, dampingFraction: 0.8), value: recorder.isRecording)
+            .contentShape(Circle())
+            .overlay {
+                PressDetector(
+                    onBegan: {
+                        micSlide = 0
+                        recorder.begin { camera.microphoneAllowed() }
+                    },
+                    onMoved: { offset in
+                        guard recorder.isRecording else { return }
+                        micSlide = min(0, offset.width)
+                        if offset.width < -cancelDistance {
+                            recorder.cancel()
+                            withAnimation(.spring(response: 0.25)) { micSlide = 0 }
+                        }
+                    },
+                    onEnded: {
+                        withAnimation(.spring(response: 0.25)) { micSlide = 0 }
+                        if let url = recorder.finish() { sendVoiceNote(url) }
+                    }
+                )
+            }
+            .accessibilityLabel("Hold to record a voice note")
+    }
+
+    private func sendVoiceNote(_ url: URL) {
+        Task {
+            if !(await store.send(voiceNote: url, to: conversationID)) { voiceFailed = true }
+        }
     }
 
     private func send() {
@@ -293,7 +384,7 @@ extension ConversationScreen {
 
         let canSave = message.isSnap
             ? (mine || message.isUnopenedSnap(for: me))
-            : message.isDisappearingText
+            : message.isDisappearingChat
         if message.isSnap || message.ephemeral {
             if message.isSaved {
                 // Only whoever saved it can take that back.
@@ -346,6 +437,16 @@ extension ConversationScreen {
         if saver == session.userID { return "you" }
         let name = conversation?.members.first { $0.id == saver }?.displayName
         return name?.split(separator: " ").first.map(String.init) ?? name
+    }
+
+    /// What to call a message in a sentence.
+    fileprivate static func noun(_ message: Message) -> String {
+        switch message.kind {
+        case .photo: "photo"
+        case .video: "video"
+        case .audio: "voice note"
+        case .text, .unsupported: "message"
+        }
     }
 
     /// Presenting straight from a dismissing sheet gets dropped; wait it out.
@@ -514,6 +615,9 @@ private struct MessageRow: View {
     var header: String? = nil
     /// Who saved it in chat, if anyone ("you" or a first name).
     var saverName: String? = nil
+    /// Long-pressed for the actions sheet: lifting the finger mustn't
+    /// also count as a tap.
+    var isPicked = false
     let onOpenPhoto: () -> Void
 
     private var showsSavedBand: Bool {
@@ -577,6 +681,13 @@ private struct MessageRow: View {
             } else {
                 SnapStatus(message: message, me: me, isGroup: isGroup, onOpen: onOpenPhoto)
             }
+        case .audio:
+            VoiceNoteView(message: message, color: color, isPicked: isPicked)
+        case .unsupported:
+            Text("Update Groupy to see this message.")
+                .font(.system(size: 15))
+                .italic()
+                .foregroundStyle(.white.opacity(0.5))
         }
     }
 
@@ -841,6 +952,6 @@ private struct VideoMessagePlayer: View {
                 ProgressView().tint(.white.opacity(0.5))
             }
         }
-        .task(id: message.id) { url = await store.video(for: message) }
+        .task(id: message.id) { url = await store.file(for: message) }
     }
 }

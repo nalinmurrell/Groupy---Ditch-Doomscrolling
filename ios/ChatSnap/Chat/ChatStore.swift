@@ -27,6 +27,7 @@ final class ChatStore: ObservableObject {
     private var failedAttempts = 0
     private static let retryDelays: [Double] = [2, 5, 10]
     private let imageCache = NSCache<NSString, UIImage>()
+    private var voiceNotes: [String: VoiceNoteInfo] = [:]
     private var realtime: Task<Void, Never>?
     private var deletions: Task<Void, Never>?
     private var saves: Task<Void, Never>?
@@ -156,7 +157,7 @@ final class ChatStore: ObservableObject {
                     imageCache.setObject(image, forKey: path as NSString)
                 case .video(let url):
                     // Keep the local file as this path's cached copy.
-                    try? FileManager.default.copyItem(at: url, to: Self.videoCacheURL(for: path))
+                    try? FileManager.default.copyItem(at: url, to: Self.mediaCacheURL(for: path))
                 }
 
                 let sent: Message = try await client
@@ -170,6 +171,33 @@ final class ChatStore: ObservableObject {
             } catch {
                 continue
             }
+        }
+    }
+
+    /// A voice note: the .m4a goes to storage like a snap, then the row.
+    /// The recording becomes the path's cached copy, so it plays at once.
+    @discardableResult
+    func send(voiceNote url: URL, to conversationID: Conversation.ID) async -> Bool {
+        guard let data = try? Data(contentsOf: url) else { return false }
+        let path = "\(conversationID.uuidString.lowercased())/\(UUID().uuidString.lowercased()).m4a"
+        defer { try? FileManager.default.removeItem(at: url) }
+        do {
+            try await client.storage
+                .from("snaps")
+                .upload(path, data: data, options: FileOptions(contentType: "audio/mp4"))
+            try? FileManager.default.copyItem(at: url, to: Self.mediaCacheURL(for: path))
+            let sent: Message = try await client
+                .from("messages")
+                .insert(NewMessage(conversationID: conversationID, kind: .audio, body: nil, photoPath: path))
+                .select()
+                .single()
+                .execute()
+                .value
+            receive(sent)
+            return true
+        } catch {
+            log.error("voice note send failed: \(error.localizedDescription)")
+            return false
         }
     }
 
@@ -305,10 +333,10 @@ final class ChatStore: ObservableObject {
         return image
     }
 
-    /// A video message's clip as a local file, downloaded once into Caches.
-    func video(for message: Message) async -> URL? {
+    /// A video or voice note as a local file, downloaded once into Caches.
+    func file(for message: Message) async -> URL? {
         guard let path = message.photoPath else { return nil }
-        let local = Self.videoCacheURL(for: path)
+        let local = Self.mediaCacheURL(for: path)
         if FileManager.default.fileExists(atPath: local.path) { return local }
         guard let data = try? await client.storage.from("snaps").download(path: path),
               (try? data.write(to: local)) != nil else { return nil }
@@ -320,7 +348,7 @@ final class ChatStore: ObservableObject {
         guard let path = message.photoPath else { return nil }
         let key = "thumb:\(path)" as NSString
         if let cached = imageCache.object(forKey: key) { return cached }
-        guard let url = await video(for: message) else { return nil }
+        guard let url = await file(for: message) else { return nil }
         let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: 480, height: 720)
@@ -330,7 +358,19 @@ final class ChatStore: ObservableObject {
         return image
     }
 
-    private static func videoCacheURL(for path: String) -> URL {
+    /// A voice note's length and the shape of its waveform, worked out
+    /// from the file once and kept for the session.
+    func voiceNote(for message: Message) async -> VoiceNoteInfo? {
+        guard let path = message.photoPath else { return nil }
+        if let known = voiceNotes[path] { return known }
+        guard let url = await file(for: message),
+              let info = await Task.detached(operation: { VoiceNoteInfo(analysing: url) }).value
+        else { return nil }
+        voiceNotes[path] = info
+        return info
+    }
+
+    private static func mediaCacheURL(for path: String) -> URL {
         let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("snaps", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -441,7 +481,7 @@ final class ChatStore: ObservableObject {
                 _ = try await client.storage.from("snaps").remove(paths: [path])
                 imageCache.removeObject(forKey: path as NSString)
                 imageCache.removeObject(forKey: "thumb:\(path)" as NSString)
-                try? FileManager.default.removeItem(at: Self.videoCacheURL(for: path))
+                try? FileManager.default.removeItem(at: Self.mediaCacheURL(for: path))
             }
             try await client
                 .from("messages")

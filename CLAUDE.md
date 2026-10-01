@@ -66,7 +66,7 @@ Settings → Accounts. Bump `CURRENT_PROJECT_VERSION` in project.yml before each
 destination upload). App record exists in App Store Connect as "Groupy".
 
 Migrations applied on the live project: friend requests (09-18), groups (09-20), pins (09-20). add-members (09-20). delete-messages (09-20), push (09-21), video (09-21: `kind` admits 'video',
-clips stored at `snaps/<cid>/<uuid>.mov`), snaps opened/saved (09-23), reactions (09-23), account details (09-23), disappearing chats (09-30).
+clips stored at `snaps/<cid>/<uuid>.mov`), snaps opened/saved (09-23), reactions (09-23), account details (09-23), disappearing chats (09-30), voice notes (10-01).
 Test accounts to delete under Authentication → Users: `probe-1789526196@…`,
 `probe2-…@chatsnap-probe.io`. There is a real group "Groupy Test" between Nalin
 and Probe from verification; leave it from the app.
@@ -137,6 +137,17 @@ open) calls `leave_chat(cid)`: records views of others' texts in `snap_views`,
 then deletes unsaved ephemeral texts every other member has viewed — realtime
 delete events clear them everywhere. `set_snap_saved` now saves any kind. Builds
 before this never call leave_chat, so texts to those users simply stay.
+
+Voice notes (10-01): mic on the right of the message field, Snapchat-style —
+hold to record (from touch-down, AAC mono 64 kbps, up to 60s then it sends
+itself), let go to send, slide left ~110pt to bin it, a tap shows "Hold to
+record". `kind = 'audio'`, file at `snaps/<cid>/<uuid>.m4a`; they behave like
+texts, not snaps: no one-look, disappear via `leave_chat` once everyone's seen
+the chat, saveable. The row shows play/pause, a waveform worked out from the
+file (`VoiceNoteInfo`) and the length; one note plays at a time
+(`VoicePlayer`), through the speaker. `Message.Kind` now decodes unknown kinds
+as `.unsupported` ("Update Groupy to see this") — builds up to 4 don't, so a
+voice note breaks their thread/list decode until they update to 5+.
 
 Not yet built anywhere: read receipts for text, Sign in with Apple, snap
 replays / timers, deleting fully-opened unsaved snap files.
