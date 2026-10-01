@@ -76,28 +76,28 @@ struct ChatMembersBar: View {
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 ForEach(ordered) { member in
                     let active = here.contains(member.id)
                     Text(firstName(member))
                         .textCase(.uppercase)
-                        .font(.system(size: 13, weight: .semibold))
-                        .tracking(0.6)
+                        .font(.system(size: 11, weight: .semibold))
+                        .tracking(0.5)
                         .lineLimit(1)
                         .foregroundStyle(active ? color(member.id) : .white.opacity(0.6))
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 6)
-                        .frame(minWidth: 64)
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 4)
+                        .frame(minWidth: 48)
                         .background(
                             Capsule().strokeBorder(
                                 active ? color(member.id) : .white.opacity(0.3),
-                                lineWidth: 1.5
+                                lineWidth: 1.2
                             )
                         )
                 }
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 6)
+            .padding(.vertical, 5)
             .animation(.easeInOut(duration: 0.2), value: here)
         }
     }
