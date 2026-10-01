@@ -234,11 +234,12 @@ struct ConversationScreen: View {
                 camera.captureTarget = conversationID
                 withoutAnimation { isShootingSnap = true }
             } label: {
+                // Snapchat's: a white disc, black camera.
                 Image(systemName: "camera.fill")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 36, height: 36)
-                    .background(Color.white.opacity(0.1), in: Circle())
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(.black)
+                    .frame(width: 44, height: 44)
+                    .background(.white, in: Circle())
             }
             .buttonStyle(.plain)
 
@@ -249,7 +250,7 @@ struct ConversationScreen: View {
                 ZStack(alignment: .leading) {
                     // Single line so Return means send. (A multiline field
                     // turns Return into a newline and never submits.)
-                    TextField("Send a message", text: $draft)
+                    TextField("Send a chat", text: $draft)
                         .textFieldStyle(.plain)
                         .submitLabel(.send)
                         .focused($isComposing)
@@ -271,10 +272,11 @@ struct ConversationScreen: View {
                 }
                 micButton
             }
-            .padding(.leading, 14)
-            .padding(.trailing, 3)
-            .padding(.vertical, 3)
-            .background(.white.opacity(0.1), in: Capsule())
+            .padding(.leading, 16)
+            .padding(.trailing, 6)
+            .padding(.vertical, 5)
+            // Outlined, not filled, like Snapchat's field.
+            .overlay(Capsule().strokeBorder(.white.opacity(0.3), lineWidth: 1.5))
 
             // Camera roll. The picker runs out of process, so no photo
             // library permission is needed — the user only hands over the
@@ -284,13 +286,13 @@ struct ConversationScreen: View {
                     if isSendingPhoto {
                         ProgressView().tint(.white)
                     } else {
-                        Image(systemName: "photo.on.rectangle")
-                            .font(.system(size: 16, weight: .semibold))
+                        Image(systemName: "photo.on.rectangle.angled")
+                            .font(.system(size: 22, weight: .regular))
                             .foregroundStyle(.white)
                     }
                 }
-                .frame(width: 36, height: 36)
-                .background(Color.white.opacity(0.1), in: Circle())
+                .frame(width: 36, height: 44)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .disabled(isSendingPhoto)
@@ -307,8 +309,8 @@ struct ConversationScreen: View {
     }
 
     private var micButton: some View {
-        Image(systemName: "mic.fill")
-            .font(.system(size: 16, weight: .semibold))
+        Image(systemName: "waveform")
+            .font(.system(size: 18, weight: .semibold))
             .foregroundStyle(.white.opacity(recorder.isRecording ? 1 : 0.85))
             .frame(width: 32, height: 32)
             .background(recorder.isRecording ? SnapColors.me : .clear, in: Circle())
@@ -778,28 +780,72 @@ private struct SnapStatus: View {
 
     var body: some View {
         Button(action: onOpen) {
-            HStack(spacing: 8) {
-                Image(systemName: message.isFromMe(me)
-                      ? (filled ? "arrowtriangle.right.fill" : "arrowtriangle.right")
-                      : (filled ? "square.fill" : "square"))
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(tint)
-                Text(message.kind == .video ? "Video" : "Snap")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(tint)
+            HStack(spacing: 14) {
+                icon
+                    .frame(width: 22, height: 22)
                 Text(label)
-                    .font(.system(size: 14, weight: canOpen ? .semibold : .regular))
-                    .foregroundStyle(.white.opacity(canOpen ? 0.9 : 0.45))
+                    .font(.system(size: 19, weight: .medium))
+                    .foregroundStyle(.white.opacity(canOpen ? 1 : 0.85))
+                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 11)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(tint.opacity(canOpen ? 0.9 : 0.35), lineWidth: 1.5)
-            )
+            .padding(.horizontal, 16)
+            .padding(.vertical, 16)
+            .chatCard()
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        // Quiet: disabled (nothing to open) mustn't grey the card out.
+        .buttonStyle(.quiet)
         .disabled(!canOpen)
+    }
+
+    /// Yours: Snapchat's notched send arrow. Theirs: a square. Filled
+    /// while there's something to see.
+    @ViewBuilder
+    private var icon: some View {
+        if message.isFromMe(me) {
+            if filled {
+                SentArrow().fill(tint)
+            } else {
+                SentArrow().stroke(tint, style: StrokeStyle(lineWidth: 2.2, lineJoin: .round))
+                    .padding(1.1)
+            }
+        } else {
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(filled ? tint : .clear)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .strokeBorder(tint, lineWidth: 2.2)
+                )
+                .padding(2)
+        }
+    }
+}
+
+/// Snapchat's sent-snap arrow: a right-pointing triangle with a notch cut
+/// into its back.
+private struct SentArrow: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY + rect.height * 0.08))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY - rect.height * 0.08))
+        path.addLine(to: CGPoint(x: rect.minX + rect.width * 0.28, y: rect.midY))
+        path.closeSubpath()
+        return path
+    }
+}
+
+extension View {
+    /// The dark rounded card Snapchat puts snaps and voice notes in.
+    func chatCard() -> some View {
+        background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color(white: 0.1))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(.white.opacity(0.07), lineWidth: 1)
+                )
+        )
     }
 }
 

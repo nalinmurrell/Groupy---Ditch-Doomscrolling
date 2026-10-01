@@ -146,7 +146,12 @@ texts, not snaps: no one-look, disappear via `leave_chat` once everyone's seen
 the chat, saveable. The row shows play/pause, a waveform worked out from the
 file (`VoiceNoteInfo`) and the length; one note plays at a time
 (`VoicePlayer`), through the speaker. While playing, a 1x/1.5x/2x chip cycles the
-speed (kept in UserDefaults); the countdown shows real time left. `Message.Kind` now decodes unknown kinds
+speed (kept in UserDefaults); the countdown shows real time left.
+Look (10-01, from Nalin's Snapchat screenshots): voice notes and unsaved snap
+statuses sit in the same dark card (`chatCard()`); sent snaps use Snapchat's
+notched arrow (filled = Delivered, outline = Opened). Composer: white camera
+disc, outlined field ("Send a chat") with the waveform voice button, plain
+photo icon. `Message.Kind` now decodes unknown kinds
 as `.unsupported` ("Update Groupy to see this") — builds up to 4 don't, so a
 voice note breaks their thread/list decode until they update to 5+.
 

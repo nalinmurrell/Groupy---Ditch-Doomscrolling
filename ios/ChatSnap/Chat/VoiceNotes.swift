@@ -201,7 +201,7 @@ final class VoicePlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
 
 /// A voice note's length and waveform, read from the file.
 struct VoiceNoteInfo: Sendable {
-    static let bars = 28
+    static let bars = 40
 
     let duration: TimeInterval
     /// One per bar, 0…1, scaled so the loudest bar is full height.
@@ -230,12 +230,13 @@ struct VoiceNoteInfo: Sendable {
             return (sum / Float(end - start)).squareRoot()
         }
         let peak = max(loudness.max() ?? 0, 0.0001)
-        levels = loudness.map { max(0.12, min(1, $0 / peak)) }
+        levels = loudness.map { min(1, $0 / peak) }
     }
 }
 
-/// A voice note in the thread: play button, waveform, length. The bars
-/// fill in the sender's colour as it plays.
+/// A voice note in the thread, Snapchat's card: a play triangle, the
+/// waveform in the sender's colour, the speed chip and the length. While it
+/// plays, the part still to come dims.
 struct VoiceNoteView: View {
     @EnvironmentObject private var store: ChatStore
     @ObservedObject private var player = VoicePlayer.shared
@@ -250,33 +251,64 @@ struct VoiceNoteView: View {
     private var isPlaying: Bool { player.playingID == message.id }
 
     var body: some View {
-        HStack(spacing: 10) {
-            playButton
-            if isPlaying {
-                speedButton
-                    .transition(.opacity.combined(with: .scale(scale: 0.8)))
+        HStack(spacing: 14) {
+            Button(action: toggle) {
+                TimelineView(.animation(paused: !isPlaying)) { _ in
+                    HStack(spacing: 14) {
+                        Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 26, weight: .bold))
+                            .foregroundStyle(color)
+                            .frame(width: 30)
+                            .opacity(url == nil ? 0.5 : 1)
+                        waveform(progress: isPlaying ? player.progress : nil)
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            speedButton
+
+            TimelineView(.animation(paused: !isPlaying)) { _ in
+                Text(Self.clock(isPlaying ? player.remaining : info?.duration))
+                    .font(.system(size: 18, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundStyle(.white.opacity(0.5))
+                    .frame(minWidth: 42, alignment: .trailing)
             }
         }
-        .animation(.easeOut(duration: 0.15), value: isPlaying)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .chatCard()
         .task(id: message.id) {
             url = await store.file(for: message)
             info = await store.voiceNote(for: message)
         }
     }
 
-    /// Snapchat's speed chip: shows while playing, tap to step through.
+    private func toggle() {
+        guard let url, !isPicked else { return }
+        player.toggle(message.id, url: url)
+    }
+
+    /// Snapchat's speed chip: tap to step through 1x, 1.5x, 2x. Starts the
+    /// note if it isn't playing, so the tap's never wasted.
     private var speedButton: some View {
-        Button { player.cycleRate() } label: {
+        Button {
+            guard !isPicked else { return }
+            player.cycleRate()
+            if !isPlaying { toggle() }
+        } label: {
             Text(Self.rateLabel(player.rate))
-                .font(.system(size: 12, weight: .bold))
+                .font(.system(size: 15, weight: .medium))
                 .monospacedDigit()
-                .foregroundStyle(.white)
+                .foregroundStyle(.white.opacity(0.6))
                 // Swap the label outright; a crossfade ghosts the old one.
                 .contentTransition(.identity)
-                .frame(minWidth: 38)
-                .padding(.vertical, 5)
-                .background(.white.opacity(0.15), in: Capsule())
-                .contentShape(Capsule())
+                .frame(minWidth: 44)
+                .padding(.vertical, 7)
+                .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Playback speed \(Self.rateLabel(player.rate))")
@@ -286,47 +318,21 @@ struct VoiceNoteView: View {
         rate == 1.5 ? "1.5x" : "\(Int(rate))x"
     }
 
-    private var playButton: some View {
-        Button {
-            guard let url, !isPicked else { return }
-            player.toggle(message.id, url: url)
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 32, height: 32)
-                    .background(color, in: Circle())
-                    .opacity(url == nil ? 0.5 : 1)
-
-                TimelineView(.animation(paused: !isPlaying)) { _ in
-                    let progress = isPlaying ? player.progress : 0
-                    HStack(spacing: 10) {
-                        waveform(progress: progress)
-                        Text(Self.clock(isPlaying ? player.remaining : info?.duration))
-                            .font(.system(size: 13, weight: .medium))
-                            .monospacedDigit()
-                            .foregroundStyle(.white.opacity(0.6))
-                    }
-                }
-            }
-            .padding(.vertical, 2)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func waveform(progress: Double) -> some View {
-        let levels = info?.levels ?? Array(repeating: 0.12, count: VoiceNoteInfo.bars)
-        return HStack(spacing: 2) {
+    /// Bars centred on a line; the quiet ones shrink to dots, like
+    /// Snapchat's. `progress` is nil when it isn't playing.
+    private func waveform(progress: Double?) -> some View {
+        let levels = info?.levels ?? Array(repeating: 0, count: VoiceNoteInfo.bars)
+        // Each bar centred in an equal slot, so the wave spans the card.
+        return HStack(spacing: 0) {
             ForEach(levels.indices, id: \.self) { index in
-                let played = Double(index) / Double(levels.count) < progress
+                let ahead = progress.map { Double(index) / Double(levels.count) >= $0 } ?? false
                 Capsule()
-                    .fill(played ? color : .white.opacity(0.4))
-                    .frame(width: 3, height: 4 + 22 * CGFloat(levels[index]))
+                    .fill(color.opacity(ahead ? 0.35 : 1))
+                    .frame(width: 2.5, height: max(2.5, 34 * CGFloat(levels[index])))
+                    .frame(maxWidth: .infinity)
             }
         }
-        .frame(height: 26)
+        .frame(maxWidth: .infinity, minHeight: 34, maxHeight: 34)
     }
 
     /// 0:07, 1:00. Dashes until the file's been read. A running timer
