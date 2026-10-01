@@ -59,7 +59,9 @@ build 1 (2026-09-18), build 2 (2026-09-20, groups/pins/friend-request
 fixes), build 3 (2026-09-20, push, add members, delete, camera roll, in-thread
 camera, Return-to-send, timestamps), build 4 (2026-09-30, video, snaps
 opened/saved, reactions, settings, zoom, 9:16 viewfinder, disappearing chats,
-Snapchat-style threads, push-tap crash fix). Xcode 27 lost its Apple account
+Snapchat-style threads, push-tap crash fix), build 5 (2026-10-01, voice notes
++ 1.5x/2x, Snapchat-look cards and composer, tap-to-save, group presence pills,
+front-camera rotation via RotationCoordinator, unknown-kind-safe decoding). Xcode 27 lost its Apple account
 once — if export says "Failed to Use Accounts", Nalin re-adds it in Xcode →
 Settings → Accounts. Bump `CURRENT_PROJECT_VERSION` in project.yml before each upload. Uploaded via `xcodebuild
 -exportArchive` with `build/ExportOptions.plist` (method app-store-connect,
