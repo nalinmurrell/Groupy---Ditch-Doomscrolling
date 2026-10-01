@@ -670,3 +670,29 @@ begin
     );
 end;
 $$;
+
+-- ---------------------------------------------------------------------------
+-- Chat presence (2026-10-01): private Realtime channel "chat:<cid>"; only
+-- members can join it, see who's there, or track themselves.
+-- ---------------------------------------------------------------------------
+create policy "members see who's in their chats"
+  on realtime.messages for select to authenticated
+  using (
+    realtime.messages.extension = 'presence'
+    and split_part(realtime.topic(), ':', 1) = 'chat'
+    and split_part(realtime.topic(), ':', 2) in (
+      select conversation_id::text from public.conversation_members
+      where user_id = auth.uid()
+    )
+  );
+
+create policy "members show up in their chats"
+  on realtime.messages for insert to authenticated
+  with check (
+    realtime.messages.extension = 'presence'
+    and split_part(realtime.topic(), ':', 1) = 'chat'
+    and split_part(realtime.topic(), ':', 2) in (
+      select conversation_id::text from public.conversation_members
+      where user_id = auth.uid()
+    )
+  );

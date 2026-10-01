@@ -18,6 +18,7 @@ struct ConversationScreen: View {
     @State private var pickedPhoto: PhotosPickerItem?
     @State private var isSendingPhoto = false
     @StateObject private var recorder = VoiceRecorder()
+    @StateObject private var presence = ChatPresence()
     /// The finger's slide left while recording, for slide-to-cancel.
     @State private var micSlide: CGFloat = 0
     @State private var voiceFailed = false
@@ -32,6 +33,9 @@ struct ConversationScreen: View {
     var body: some View {
         VStack(spacing: 0) {
             messages
+            if let conversation, conversation.isGroup {
+                ChatMembersBar(members: conversation.members, here: presence.here, color: memberColor)
+            }
             composer
         }
         .background(Color.black)
@@ -84,6 +88,18 @@ struct ConversationScreen: View {
         }
         .onAppear {
             recorder.onLimitReached = { url in sendVoiceNote(url) }
+        }
+        // In the group while it's open and the app's up; out otherwise.
+        .task(id: scenePhase != .background) {
+            guard conversation?.isGroup == true, let me = session.userID else { return }
+            if scenePhase != .background {
+                await presence.join(conversationID, as: me)
+            } else {
+                await presence.leave()
+            }
+        }
+        .onDisappear {
+            Task { await presence.leave() }
         }
         .alert("Couldn't send voice note", isPresented: $voiceFailed) {
             Button("OK", role: .cancel) {}
@@ -428,9 +444,14 @@ extension ConversationScreen {
     /// Snapchat's colours: you in red; the other person in blue; in a group,
     /// each member keeps their own colour.
     fileprivate func senderColor(of message: Message) -> Color {
-        if message.isFromMe(session.userID) { return SnapColors.me }
+        memberColor(message.senderID)
+    }
+
+    /// One colour per person, the same in their messages and their pill.
+    fileprivate func memberColor(_ id: UUID) -> Color {
+        if id == session.userID { return SnapColors.me }
         guard conversation?.isGroup == true else { return SnapColors.them }
-        let seed = message.senderID.uuidString.unicodeScalars.reduce(0) { $0 &+ Int($1.value) }
+        let seed = id.uuidString.unicodeScalars.reduce(0) { $0 &+ Int($1.value) }
         return SnapColors.group[seed % SnapColors.group.count]
     }
 
