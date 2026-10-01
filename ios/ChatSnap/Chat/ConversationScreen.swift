@@ -153,7 +153,7 @@ struct ConversationScreen: View {
                 // No spacing: a run's bars join into one line, like Snapchat.
                 LazyVStack(alignment: .leading, spacing: 0) {
                     // Snapchat's rule, said once where it applies.
-                    Text("Chats disappear once everyone's seen them.\nPress and hold a message to save it.")
+                    Text("Chats disappear once everyone's seen them.\nTap a message to save it.")
                         .font(.system(size: 12))
                         .foregroundStyle(.white.opacity(0.35))
                         .multilineTextAlignment(.center)
@@ -186,7 +186,8 @@ struct ConversationScreen: View {
                             color: senderColor(of: message),
                             header: startsRun ? (mine ? "Me" : conversation?.senderName(of: message) ?? "") : nil,
                             saverName: saverName(of: message),
-                            isPicked: actionTarget?.id == message.id
+                            isPicked: actionTarget?.id == message.id,
+                            onTapText: { toggleSaved(message) }
                         ) {
                             guard actionTarget == nil else { return }
                             viewing = message
@@ -441,6 +442,20 @@ extension ConversationScreen {
         return name?.split(separator: " ").first.map(String.init) ?? name
     }
 
+    /// Tap a text to save it in chat; tap again to unsave (only whoever
+    /// saved it can). Permanent texts and long-press lifts do nothing.
+    fileprivate func toggleSaved(_ message: Message) {
+        guard actionTarget == nil else { return }
+        let me = session.userID
+        if message.isSaved {
+            guard message.savedBy == me else { return }
+        } else {
+            guard message.isDisappearingChat else { return }
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        Task { await store.setSaved(message, !message.isSaved) }
+    }
+
     /// What to call a message in a sentence.
     fileprivate static func noun(_ message: Message) -> String {
         switch message.kind {
@@ -620,6 +635,8 @@ private struct MessageRow: View {
     /// Long-pressed for the actions sheet: lifting the finger mustn't
     /// also count as a tap.
     var isPicked = false
+    /// A tap on a text: Snapchat's tap-to-save.
+    var onTapText: () -> Void = {}
     let onOpenPhoto: () -> Void
 
     private var showsSavedBand: Bool {
@@ -645,6 +662,13 @@ private struct MessageRow: View {
                 .padding(.vertical, showsSavedBand ? 8 : 3)
                 .padding(.trailing, showsSavedBand ? 8 : 0)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                // The whole line is the target, not just the words. Snaps
+                // and voice notes keep their own buttons (a child's tap
+                // wins), so this only ever acts for texts.
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if message.kind == .text { onTapText() }
+                }
                 // Saved: Snapchat's grey band, the width of the chat.
                 .background(showsSavedBand ? SnapColors.savedBand : .clear)
                 // The sender's bar, exactly as tall as the message.

@@ -135,7 +135,10 @@ Disappearing chats (09-30): `messages.ephemeral` (default true; every row
 before 09-30 set false = permanent). Closing a thread (or backgrounding with it
 open) calls `leave_chat(cid)`: records views of others' texts in `snap_views`,
 then deletes unsaved ephemeral texts every other member has viewed — realtime
-delete events clear them everywhere. `set_snap_saved` now saves any kind. Builds
+delete events clear them everywhere. `set_snap_saved` now saves any kind.
+Tap a text to save it (tap again to unsave — only the saver can); the
+save shows at once and rolls back if the server refuses. Long-press still
+opens the actions sheet. Builds
 before this never call leave_chat, so texts to those users simply stay.
 
 Voice notes (10-01): mic on the right of the message field, Snapchat-style —

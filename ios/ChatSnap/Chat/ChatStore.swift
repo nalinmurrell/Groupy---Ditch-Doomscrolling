@@ -393,14 +393,21 @@ final class ChatStore: ObservableObject {
     func setSaved(_ message: Message, _ saved: Bool) async {
         guard let me = client.auth.currentUser?.id else { return }
         struct Params: Encodable { let mid: UUID; let saved: Bool }
+        // Shown at once (tap-to-save should feel instant), undone if the
+        // server says no.
+        let before = (message.savedBy, message.savedAt)
+        update(message.id) {
+            $0.savedBy = saved ? me : nil
+            $0.savedAt = saved ? Date() : nil
+        }
         do {
             try await client.rpc("set_snap_saved", params: Params(mid: message.id, saved: saved)).execute()
-            update(message.id) {
-                $0.savedBy = saved ? me : nil
-                $0.savedAt = saved ? Date() : nil
-            }
         } catch {
-            // Leave it as it was; the UI never changed.
+            log.error("save failed: \(error.localizedDescription, privacy: .public)")
+            update(message.id) {
+                $0.savedBy = before.0
+                $0.savedAt = before.1
+            }
         }
     }
 
