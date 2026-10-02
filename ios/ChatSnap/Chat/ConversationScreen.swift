@@ -54,16 +54,12 @@ struct ConversationScreen: View {
         .navigationTitle(conversation?.title(for: session.userID) ?? "Chat")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                // Just the chevron, like Snapchat.
-                Button { close(-1) } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 32, height: 32, alignment: .leading)
-                        .contentShape(Rectangle())
-                }
-                .accessibilityLabel("Back")
+            // iOS 26+ puts toolbar buttons in a glass bubble; just the
+            // chevron, like Snapchat.
+            if #available(iOS 26, *) {
+                backButton.sharedBackgroundVisibility(.hidden)
+            } else {
+                backButton
             }
             // In a group the title is a button: tap for members.
             if let conversation, conversation.isGroup {
@@ -430,6 +426,19 @@ struct ConversationScreen: View {
     private func sendVoiceNote(_ url: URL) {
         Task {
             if !(await store.send(voiceNote: url, to: conversationID)) { voiceFailed = true }
+        }
+    }
+
+    private var backButton: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button { close(-1) } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 32, height: 32, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel("Back")
         }
     }
 

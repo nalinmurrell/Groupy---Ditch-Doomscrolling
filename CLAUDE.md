@@ -216,7 +216,10 @@ Threads (10-02): not pushed on a NavigationStack any more — ChatListScreen
 overlays the open thread (its own NavigationStack for the toolbar) and slides
 it in from / out to the LEFT, Snapchat-style. Swipe left or right anywhere
 in the thread drags it aside live (out the way you swiped) (`swipeOffset`); a quick flick (≥300pt/s, `SwipeRule.flickSpeed`) or a drag past halfway closes it; tabs use the same rule.
-The back button is a bare chevron, like Snapchat. `path` is still the binding RootView uses
+The back button is a bare chevron, like Snapchat. iOS 26+ wraps toolbar items in a
+Liquid Glass bubble — `.sharedBackgroundVisibility(.hidden)` turns it off. The
+Probe simulator is iOS 18.5, so glass-only chrome must be checked on the phone
+(iOS 27). `path` is still the binding RootView uses
 to hide the tab bar and stop paging, and that push-taps set.
 
 Tab pager: the panes are `.disabled` for ~0.35s around a sideways swipe so
