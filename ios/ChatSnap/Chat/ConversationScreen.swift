@@ -55,14 +55,17 @@ struct ConversationScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                // Just the chevron, like Snapchat.
+                // The chevron in a round bubble, like the camera's buttons.
                 Button { close(-1) } label: {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 20, weight: .semibold))
+                        .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(.white)
-                        .frame(width: 32, height: 32, alignment: .leading)
-                        .contentShape(Rectangle())
+                        .offset(x: -1)
+                        .frame(width: 36, height: 36)
+                        .background(Color.white.opacity(0.15), in: Circle())
+                        .contentShape(Circle())
                 }
+                .buttonStyle(.plain)
                 .accessibilityLabel("Back")
             }
             // In a group the title is a button: tap for members.
