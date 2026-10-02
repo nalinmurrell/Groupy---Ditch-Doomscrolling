@@ -6,6 +6,12 @@ import SwiftUI
 /// view controller, and those miscount safe areas: nav titles slid under the
 /// Dynamic Island and the chat composer floated a home-indicator's height
 /// above the keyboard. One SwiftUI hierarchy has none of that.
+/// Shared by the tab pager and the thread's swipe-to-close.
+enum SwipeRule {
+    /// Points per second that count as a flick.
+    static let flickSpeed: CGFloat = 300
+}
+
 struct Pager<Content: View>: View {
     @Binding var index: Int
     let count: Int
@@ -81,10 +87,13 @@ struct Pager<Content: View>: View {
                     return
                 }
 
-                let projected = value.predictedEndTranslation.width
+                // A quick flick changes tab however short it is; a slow drag
+                // has to get past halfway. Slow, short drags snap back.
+                let dx = value.translation.width
+                let speed = value.velocity.width
                 var next = index
-                if projected < -width / 3 { next += 1 }
-                if projected >  width / 3 { next -= 1 }
+                if speed < -SwipeRule.flickSpeed || dx < -width / 2 { next += 1 }
+                if speed >  SwipeRule.flickSpeed || dx >  width / 2 { next -= 1 }
                 next = max(0, min(count - 1, next))
 
                 withAnimation(snap) {

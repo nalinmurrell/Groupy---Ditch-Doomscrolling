@@ -215,7 +215,7 @@ for states that are hard to reach by tapping.
 Threads (10-02): not pushed on a NavigationStack any more — ChatListScreen
 overlays the open thread (its own NavigationStack for the toolbar) and slides
 it in from / out to the LEFT, Snapchat-style. Swipe left anywhere in the
-thread drags it aside live (`swipeOffset`); past ~110pt or a fling closes it.
+thread drags it aside live (`swipeOffset`); a quick flick (≥300pt/s, `SwipeRule.flickSpeed`) or a drag past halfway closes it; tabs use the same rule.
 The back button is our own "< Chat". `path` is still the binding RootView uses
 to hide the tab bar and stop paging, and that push-taps set.
 

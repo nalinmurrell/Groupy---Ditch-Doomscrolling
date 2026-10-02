@@ -277,9 +277,11 @@ struct ConversationScreen: View {
                     .onEnded { value in
                         defer { isSwipingSideways = nil }
                         guard isSwipingSideways == true else { return }
-                        let far = value.translation.width < -110
-                        let flung = value.predictedEndTranslation.width < -260
-                        if far || flung {
+                        // Same rule as the tabs: a quick flick closes it,
+                        // a slow drag has to get past halfway.
+                        let flung = value.velocity.width < -SwipeRule.flickSpeed
+                        let far = value.translation.width < -UIScreen.main.bounds.width / 2
+                        if flung || far {
                             close()
                         } else {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
