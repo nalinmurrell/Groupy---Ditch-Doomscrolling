@@ -122,10 +122,21 @@ struct ConversationScreen: View {
             Text("Turn it on in Settings to send voice notes.")
         }
         .fullScreenCover(item: $viewing) { message in
-            PhotoViewer(message: message, canDelete: message.isFromMe(session.userID)) {
-                viewing = nil
-                deleting = message
-            }
+            PhotoViewer(
+                message: message,
+                canDelete: message.isFromMe(session.userID),
+                onDelete: {
+                    viewing = nil
+                    deleting = message
+                },
+                onSnapReply: {
+                    viewing = nil
+                    afterSheet {
+                        camera.captureTarget = conversationID
+                        withoutAnimation { isShootingSnap = true }
+                    }
+                }
+            )
             // The thread shows through as the snap is swiped away.
             .presentationBackground(.clear)
         }
@@ -917,6 +928,10 @@ struct SnapImage: View {
     }
 }
 
+/// A snap, Snapchat's way: the picture in a rounded card with who sent it
+/// and when, and underneath a camera button (snap back), a "Reply..." field
+/// and a download button (save to Photos). Tap the snap or swipe it down to
+/// close; the ⋯ menu has Save in Chat and Delete.
 private struct PhotoViewer: View {
     @EnvironmentObject private var store: ChatStore
     @EnvironmentObject private var session: SessionStore
@@ -924,63 +939,179 @@ private struct PhotoViewer: View {
     let message: Message
     var canDelete = false
     var onDelete: () -> Void = {}
+    /// The camera button: close and shoot a snap back into this chat.
+    var onSnapReply: () -> Void = {}
 
     /// Follows a downward drag; far enough (or flung) and the snap closes.
     @State private var dragOffset: CGFloat = 0
+    @State private var reply = ""
+    @FocusState private var isReplying: Bool
+    @State private var saveState: SaveState = .idle
+
+    private enum SaveState { case idle, saving, saved, failed }
 
     /// The store's copy, so a save made here shows immediately.
     private var current: Message {
         store.messages[message.conversationID]?.first { $0.id == message.id } ?? message
     }
 
+    private var sender: Profile? {
+        store.conversation(message.conversationID)?.member(message.senderID)
+    }
+
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-
-            if message.kind == .video {
-                VideoMessagePlayer(message: message)
-                    .ignoresSafeArea()
-            } else {
-                SnapImage(message: message, contentMode: .fit)
-                    .ignoresSafeArea()
+            VStack(spacing: 10) {
+                card
+                bottomBar
             }
-
-            VStack {
-                HStack {
-                    Button { dismiss() } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 44, height: 44)
-                            .background(.black.opacity(0.35), in: Circle())
-                    }
-                    .buttonStyle(.plain)
-                    Spacer()
-                    if canDelete {
-                        Button(action: onDelete) {
-                            Image(systemName: "trash")
-                                .font(.system(size: 17, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .frame(width: 44, height: 44)
-                                .background(.black.opacity(0.35), in: Circle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 12)
-                Spacer()
-                saveButton
-                    .padding(.bottom, 24)
-            }
+            .padding(.horizontal, 6)
+            .padding(.bottom, 6)
         }
         // Shrinks a little as it's pulled down, like Snapchat.
         .scaleEffect(1 - min(dragOffset, 400) / 400 * 0.15)
         .offset(y: dragOffset)
         .gesture(swipeDown)
-        .statusBarHidden()
         // Looking at it is opening it. Unless it's saved, this is the only look.
         .onAppear { store.markOpened(message) }
+    }
+
+    // MARK: - The snap
+
+    private var card: some View {
+        ZStack {
+            Color(white: 0.06)
+            if message.kind == .video {
+                VideoMessagePlayer(message: message)
+            } else {
+                ViewerImage(message: message)
+            }
+        }
+        .overlay(alignment: .top) { header }
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .contentShape(Rectangle())
+        // Tap the snap to close it; with the keyboard up, tap just puts it away.
+        .onTapGesture {
+            if isReplying { isReplying = false } else { dismiss() }
+        }
+    }
+
+    private var header: some View {
+        HStack(spacing: 10) {
+            if let sender {
+                Avatar(subject: sender, size: 38)
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(sender?.displayName ?? "Snap")
+                    .font(.system(size: 16, weight: .semibold))
+                Text(message.createdAt.formatted(.relative(presentation: .named)))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+            .foregroundStyle(.white)
+            .shadow(color: .black.opacity(0.5), radius: 3)
+            Spacer()
+            moreMenu
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 12)
+        .padding(.bottom, 24)
+        .background(
+            LinearGradient(colors: [.black.opacity(0.45), .clear], startPoint: .top, endPoint: .bottom)
+        )
+    }
+
+    /// Save in Chat (anyone; only the saver can undo) and Delete (yours).
+    private var moreMenu: some View {
+        Menu {
+            let saved = current.isSaved
+            if !saved || current.savedBy == session.userID {
+                Button {
+                    Task { await store.setSaved(current, !saved) }
+                } label: {
+                    Label(saved ? "Unsave in Chat" : "Save in Chat",
+                          systemImage: saved ? "bookmark.slash" : "bookmark")
+                }
+            }
+            if canDelete {
+                Button(role: .destructive, action: onDelete) {
+                    Label("Delete", systemImage: "trash")
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .rotationEffect(.degrees(90))
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 40, height: 40)
+                .shadow(color: .black.opacity(0.5), radius: 3)
+        }
+    }
+
+    // MARK: - Bottom bar
+
+    private var bottomBar: some View {
+        HStack(spacing: 10) {
+            Button(action: onSnapReply) {
+                Image(systemName: "camera.fill")
+                    .font(.system(size: 21, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 58, height: 52)
+                    .overlay(Capsule().strokeBorder(.white.opacity(0.35), lineWidth: 1.5))
+            }
+            .buttonStyle(.plain)
+
+            TextField("", text: $reply, prompt: Text("Reply...").foregroundStyle(.white))
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.white)
+                .submitLabel(.send)
+                .focused($isReplying)
+                .onSubmit(sendReply)
+                .padding(.horizontal, 20)
+                .frame(height: 52)
+                .overlay(Capsule().strokeBorder(.white.opacity(0.35), lineWidth: 1.5))
+
+            Button(action: saveToPhotos) {
+                Group {
+                    switch saveState {
+                    case .idle: Image(systemName: "arrow.down.square.fill")
+                    case .saving: ProgressView().tint(.white)
+                    case .saved: Image(systemName: "checkmark")
+                    case .failed: Image(systemName: "exclamationmark.triangle.fill")
+                    }
+                }
+                .font(.system(size: 21, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 58, height: 52)
+                .overlay(Capsule().strokeBorder(.white.opacity(0.35), lineWidth: 1.5))
+            }
+            .buttonStyle(.plain)
+            .disabled(saveState == .saving || saveState == .saved)
+            .accessibilityLabel("Save to Photos")
+        }
+    }
+
+    /// A text back into the chat, then out to the thread to see it land.
+    private func sendReply() {
+        let text = reply.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        reply = ""
+        Task { await store.send(text: text, to: message.conversationID) }
+        dismiss()
+    }
+
+    private func saveToPhotos() {
+        saveState = .saving
+        Task {
+            let ok = await PhotoLibrarySaver.save(message, from: store)
+            saveState = ok ? .saved : .failed
+            UINotificationFeedbackGenerator().notificationOccurred(ok ? .success : .error)
+            if !ok {
+                try? await Task.sleep(for: .seconds(1.5))
+                saveState = .idle
+            }
+        }
     }
 
     private var swipeDown: some Gesture {
@@ -1004,25 +1135,58 @@ private struct PhotoViewer: View {
                 }
             }
     }
+}
 
-    @ViewBuilder
-    private var saveButton: some View {
-        let saved = current.isSaved
-        // Anyone can save; only whoever saved it can unsave.
-        if !saved || current.savedBy == session.userID {
-            Button { Task { await store.setSaved(current, !saved) } } label: {
-                Label(saved ? "Saved in Chat" : "Save in Chat", systemImage: saved ? "bookmark.fill" : "bookmark")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(saved ? .black : .white)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 11)
-                    .background(saved ? AnyShapeStyle(.white) : AnyShapeStyle(.black.opacity(0.45)), in: Capsule())
+/// A photo in the viewer's card. Camera snaps are about the card's shape,
+/// so they fill it edge to edge like Snapchat; anything much wider or
+/// taller (a landscape camera-roll pick) is shown whole instead.
+private struct ViewerImage: View {
+    @EnvironmentObject private var store: ChatStore
+    let message: Message
+    @State private var image: UIImage?
+
+    var body: some View {
+        GeometryReader { geo in
+            if let image {
+                let card = geo.size.width / max(geo.size.height, 1)
+                let photo = image.size.width / max(image.size.height, 1)
+                let fills = abs(photo - card) / card < 0.2
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: fills ? .fill : .fit)
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .clipped()
+            } else {
+                ProgressView().tint(.white.opacity(0.5))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .buttonStyle(.plain)
-        } else {
-            Label("Saved in Chat", systemImage: "bookmark.fill")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.6))
+        }
+        .task(id: message.id) { image = await store.image(for: message) }
+    }
+}
+
+/// Saves a snap to the photo library. Add-only access: Groupy can put
+/// things in, never read them out.
+enum PhotoLibrarySaver {
+    @MainActor
+    static func save(_ message: Message, from store: ChatStore) async -> Bool {
+        let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+        guard status == .authorized || status == .limited else { return false }
+        do {
+            if message.kind == .video {
+                guard let url = await store.file(for: message) else { return false }
+                try await PHPhotoLibrary.shared().performChanges {
+                    PHAssetCreationRequest.creationRequestForAssetFromVideo(atFileURL: url)
+                }
+            } else {
+                guard let image = await store.image(for: message) else { return false }
+                try await PHPhotoLibrary.shared().performChanges {
+                    PHAssetCreationRequest.creationRequestForAsset(from: image)
+                }
+            }
+            return true
+        } catch {
+            return false
         }
     }
 }

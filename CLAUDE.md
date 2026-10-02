@@ -120,6 +120,14 @@ photos/videos were marked saved so history stayed visible. "Opened" is a UI
 rule: the file stays in storage and members can still fetch it — true
 ephemerality would need server-side deletion once everyone's opened it.
 
+Snap viewer (10-02, from Nalin's Snapchat screenshot): the snap sits in a
+rounded card (camera-shaped photos fill it; very different shapes fit) with
+the sender's avatar, name and "x ago" on top and a ⋯ menu (Save in Chat,
+Delete). Below: camera (snap reply into the chat), "Reply..." (sends a text,
+then closes) and download (saves to Photos, add-only permission). Tap the snap
+or swipe down to close. Test-cleanup tip: `supabase storage rm
+ss:///snaps/<path> --experimental --linked --yes` removes a file.
+
 Reactions (09-23): `message_reactions` (PK message+user, so one each; upsert
 replaces). Plain RLS writes — react as yourself, in chats you're in. On
 realtime; delete events carry only the PK. Long-press sheet has a bar of six
