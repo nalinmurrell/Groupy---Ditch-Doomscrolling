@@ -60,6 +60,8 @@ struct Message: Identifiable, Decodable, Hashable {
     var openedBy: [UUID]
     /// One per person, oldest first (from `message_reactions`).
     var reactions: [Reaction]
+    /// The snap this text answers, when sent from the snap viewer.
+    let replyTo: UUID?
 
     struct Reaction: Hashable, Decodable {
         let userID: UUID
@@ -78,6 +80,7 @@ struct Message: Identifiable, Decodable, Hashable {
         case savedAt = "saved_at"
         case snapViews = "snap_views"
         case reactions = "message_reactions"
+        case replyTo = "reply_to"
     }
 
     private struct View: Decodable {
@@ -102,6 +105,7 @@ struct Message: Identifiable, Decodable, Hashable {
         // Absent on realtime payloads and fresh inserts: nobody's opened it.
         openedBy = (try c.decodeIfPresent([View].self, forKey: .snapViews) ?? []).map(\.userID)
         reactions = try c.decodeIfPresent([Reaction].self, forKey: .reactions) ?? []
+        replyTo = try c.decodeIfPresent(UUID.self, forKey: .replyTo)
     }
 
     func reaction(by user: UUID?) -> String? {

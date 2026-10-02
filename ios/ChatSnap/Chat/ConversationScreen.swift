@@ -203,13 +203,19 @@ struct ConversationScreen: View {
                         // A name header opens each run: a new sender, a new
                         // day, or a lull of twenty minutes or more.
                         let lull = previous.map { message.createdAt.timeIntervalSince($0.createdAt) > 20 * 60 } ?? true
+                        // A reply to a snap always gets its own header, and
+                        // whatever follows one starts afresh, like Snapchat.
+                        let repliedTo = message.replyTo.flatMap { id in thread.first { $0.id == id && $0.isSnap } }
                         let startsRun = newDay || lull || previous?.senderID != message.senderID
+                            || repliedTo != nil || previous?.replyTo != nil
                         MessageRow(
                             message: message,
                             me: session.userID,
                             isGroup: conversation?.isGroup == true,
                             color: senderColor(of: message),
                             header: startsRun ? (mine ? "Me" : conversation?.senderName(of: message) ?? "") : nil,
+                            repliedTo: repliedTo,
+                            replyLabel: repliedTo.map(replyLabel(for:)),
                             saverName: saverName(of: message),
                             isPicked: actionTarget?.id == message.id,
                             onTapText: { toggleSaved(message) }
@@ -464,6 +470,14 @@ extension ConversationScreen {
         return SnapColors.group[seed % SnapColors.group.count]
     }
 
+    /// "Replied to Nalin's Snap" / "Replied to your Snap".
+    fileprivate func replyLabel(for snap: Message) -> String {
+        let whose = snap.senderID == session.userID
+            ? "your"
+            : "\(conversation?.senderName(of: snap) ?? "their")'s"
+        return "Replied to \(whose) Snap"
+    }
+
     /// "you" or the saver's first name, for the caption under a saved snap.
     fileprivate func saverName(of message: Message) -> String? {
         guard let saver = message.savedBy else { return nil }
@@ -660,6 +674,10 @@ private struct MessageRow: View {
     let color: Color
     /// "Me" or the sender's first name, when this message opens a run.
     var header: String? = nil
+    /// The snap this text answers, drawn above it as a thumbnail.
+    var repliedTo: Message? = nil
+    /// "Replied to Nalin's Snap", beside the header.
+    var replyLabel: String? = nil
     /// Who saved it in chat, if anyone ("you" or a first name).
     var saverName: String? = nil
     /// Long-pressed for the actions sheet: lifting the finger mustn't
@@ -680,6 +698,12 @@ private struct MessageRow: View {
                     Text(header)
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(color)
+                    if let replyLabel {
+                        Label(replyLabel, systemImage: "arrowshape.turn.up.left.fill")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.5))
+                            .lineLimit(1)
+                    }
                     Spacer()
                     Text(message.createdAt.formatted(date: .omitted, time: .shortened))
                         .font(.system(size: 12))
@@ -726,6 +750,8 @@ private struct MessageRow: View {
     @ViewBuilder
     private var content: some View {
         switch message.kind {
+        case .text where repliedTo != nil:
+            snapReply
         case .text:
             Text(message.body ?? "")
                 .font(.system(size: 17))
@@ -745,6 +771,34 @@ private struct MessageRow: View {
                 .italic()
                 .foregroundStyle(.white.opacity(0.5))
         }
+    }
+
+    /// Snapchat's reply to a snap: a small thumbnail of it, the text in a
+    /// dark bubble overlapping its bottom edge.
+    private var snapReply: some View {
+        VStack(alignment: .leading, spacing: -28) {
+            if let repliedTo {
+                SnapImage(message: repliedTo)
+                    .frame(width: 84, height: 140)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+            Text(message.body ?? "")
+                .font(.system(size: 17))
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color(white: 0.1))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(.white.opacity(0.08), lineWidth: 1)
+                        )
+                )
+                .padding(.leading, 14)
+        }
+        .padding(.vertical, 2)
     }
 
     /// Saved in chat: the snap itself, openable any time.
@@ -1097,7 +1151,7 @@ private struct PhotoViewer: View {
         let text = reply.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         reply = ""
-        Task { await store.send(text: text, to: message.conversationID) }
+        Task { await store.send(text: text, to: message.conversationID, replyTo: message.id) }
         dismiss()
     }
 

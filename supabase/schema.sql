@@ -87,6 +87,8 @@ create table public.messages (
   -- Could disappear once seen (2026-09-30 to 2026-10-01). Chats now stay:
   -- default false, every row false, and leave_chat no longer deletes.
   ephemeral        boolean not null default false,
+  -- The snap this text answers, sent from the snap viewer (2026-10-02).
+  reply_to         uuid references public.messages (id) on delete set null,
   check (
     (kind = 'text'  and body is not null and photo_path is null) or
     (kind in ('photo', 'video', 'audio') and photo_path is not null and body is null)

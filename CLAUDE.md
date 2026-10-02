@@ -68,7 +68,7 @@ Settings → Accounts. Bump `CURRENT_PROJECT_VERSION` in project.yml before each
 destination upload). App record exists in App Store Connect as "Groupy".
 
 Migrations applied on the live project: friend requests (09-18), groups (09-20), pins (09-20). add-members (09-20). delete-messages (09-20), push (09-21), video (09-21: `kind` admits 'video',
-clips stored at `snaps/<cid>/<uuid>.mov`), snaps opened/saved (09-23), reactions (09-23), account details (09-23), disappearing chats (09-30), voice notes (10-01), chat presence (10-01), chats stay (10-01).
+clips stored at `snaps/<cid>/<uuid>.mov`), snaps opened/saved (09-23), reactions (09-23), account details (09-23), disappearing chats (09-30), voice notes (10-01), chat presence (10-01), chats stay (10-01), snap replies (10-02).
 Test accounts to delete under Authentication → Users: `probe-1789526196@…`,
 `probe2-…@chatsnap-probe.io`. There is a real group "Groupy Test" between Nalin
 and Probe from verification; leave it from the app.
@@ -125,7 +125,11 @@ rounded card (camera-shaped photos fill it; very different shapes fit) with
 the sender's avatar, name and "x ago" on top and a ⋯ menu (Save in Chat,
 Delete). Below: camera (snap reply into the chat), "Reply..." (sends a text,
 then closes) and download (saves to Photos, add-only permission). Tap the snap
-or swipe down to close. Test-cleanup tip: `supabase storage rm
+or swipe down to close. A "Reply..." text stores `messages.reply_to` (the
+snap's id; migration 10-02); the thread draws it Snapchat-style — header
+"Me ↩ Replied to Nalin's Snap", a small thumbnail, the text in a dark bubble
+overlapping it. Only drawn when the snap is in the same loaded thread; note
+the thumbnail keeps an unsaved snap visible, as Snapchat's does. Test-cleanup tip: `supabase storage rm
 ss:///snaps/<path> --experimental --linked --yes` removes a file.
 
 Reactions (09-23): `message_reactions` (PK message+user, so one each; upsert

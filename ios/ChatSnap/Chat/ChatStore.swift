@@ -201,7 +201,8 @@ final class ChatStore: ObservableObject {
         }
     }
 
-    func send(text: String, to conversationID: Conversation.ID) async {
+    /// `replyTo`: the snap this answers, when sent from the snap viewer.
+    func send(text: String, to conversationID: Conversation.ID, replyTo: Message.ID? = nil) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         // Show it from the server's own row, not a guess: realtime echoes it
@@ -209,7 +210,7 @@ final class ChatStore: ObservableObject {
         // background. `receive` dedupes.
         guard let sent: Message = try? await client
             .from("messages")
-            .insert(NewMessage(conversationID: conversationID, kind: .text, body: trimmed, photoPath: nil))
+            .insert(NewMessage(conversationID: conversationID, kind: .text, body: trimmed, photoPath: nil, replyTo: replyTo))
             .select()
             .single()
             .execute()
@@ -226,17 +227,20 @@ final class ChatStore: ObservableObject {
         let kind: Message.Kind
         let body: String?
         let photoPath: String?
+        let replyTo: UUID?
 
-        init(conversationID: UUID, kind: Message.Kind, body: String?, photoPath: String?) {
+        init(conversationID: UUID, kind: Message.Kind, body: String?, photoPath: String?, replyTo: UUID? = nil) {
             self.conversationID = conversationID
             self.senderID = Backend.client.auth.currentUser?.id
             self.kind = kind
             self.body = body
             self.photoPath = photoPath
+            self.replyTo = replyTo
         }
 
         enum CodingKeys: String, CodingKey {
             case kind, body
+            case replyTo = "reply_to"
             case conversationID = "conversation_id"
             case senderID = "sender_id"
             case photoPath = "photo_path"
