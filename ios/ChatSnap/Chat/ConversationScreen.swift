@@ -667,7 +667,7 @@ private struct MessageRow: View {
             if let header {
                 HStack(alignment: .firstTextBaseline) {
                     Text(header)
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(color)
                     Spacer()
                     Text(message.createdAt.formatted(date: .omitted, time: .shortened))
