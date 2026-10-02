@@ -6,11 +6,11 @@ struct ConversationScreen: View {
     @EnvironmentObject private var session: SessionStore
     @EnvironmentObject private var camera: CameraController
     let conversationID: Conversation.ID
-    /// How far the swipe-to-close has dragged the thread (negative = left).
+    /// How far the swipe-to-close has dragged the thread (either way).
     /// The chat list owns it so the whole layer, nav bar included, moves.
     var swipeOffset: Binding<CGFloat> = .constant(0)
-    /// Closes the thread (the chat list slides it away to the left).
-    var onClose: () -> Void = {}
+    /// Closes the thread, sliding it out to the left (-1) or right (+1).
+    var onClose: (_ direction: CGFloat) -> Void = { _ in }
     /// The current drag is sideways (decided on its first movement).
     @State private var isSwipingSideways: Bool?
 
@@ -55,13 +55,15 @@ struct ConversationScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                Button(action: close) {
-                    HStack(spacing: 3) {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 17, weight: .semibold))
-                        Text("Chat")
-                    }
+                // Just the chevron, like Snapchat.
+                Button { close(-1) } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32, alignment: .leading)
+                        .contentShape(Rectangle())
                 }
+                .accessibilityLabel("Back")
             }
             // In a group the title is a button: tap for members.
             if let conversation, conversation.isGroup {
@@ -82,7 +84,7 @@ struct ConversationScreen: View {
         }
         .sheet(isPresented: $isShowingMembers) {
             if let conversation {
-                GroupMembersSheet(conversation: conversation) { onClose() }
+                GroupMembersSheet(conversation: conversation) { onClose(-1) }
                     .presentationDetents([.medium, .large])
                     .preferredColorScheme(.dark)
             }
@@ -259,8 +261,8 @@ struct ConversationScreen: View {
                 .padding(.vertical, 14)
             }
             .defaultScrollAnchor(.bottom)
-            // Swipe left anywhere in the thread to close it: the thread
-            // follows the finger off to the left, revealing the chat list.
+            // Swipe left or right anywhere in the thread to close it: the
+            // thread follows the finger off that way, revealing the list.
             // Only a drag that starts out sideways counts, so scrolling never
             // trips it; the composer is outside this view, so the voice-note
             // slide-to-cancel can't either.
@@ -269,20 +271,22 @@ struct ConversationScreen: View {
                     .onChanged { value in
                         let dx = value.translation.width, dy = value.translation.height
                         if isSwipingSideways == nil {
-                            isSwipingSideways = actionTarget == nil && abs(dx) > abs(dy) * 1.5 && dx < 0
+                            isSwipingSideways = actionTarget == nil && abs(dx) > abs(dy) * 1.5
                         }
                         guard isSwipingSideways == true else { return }
-                        swipeOffset.wrappedValue = min(0, dx)
+                        swipeOffset.wrappedValue = dx
                     }
                     .onEnded { value in
                         defer { isSwipingSideways = nil }
                         guard isSwipingSideways == true else { return }
                         // Same rule as the tabs: a quick flick closes it,
                         // a slow drag has to get past halfway.
-                        let flung = value.velocity.width < -SwipeRule.flickSpeed
-                        let far = value.translation.width < -UIScreen.main.bounds.width / 2
-                        if flung || far {
-                            close()
+                        let dx = value.translation.width, speed = value.velocity.width
+                        let half = UIScreen.main.bounds.width / 2
+                        if speed < -SwipeRule.flickSpeed || dx < -half {
+                            close(-1)
+                        } else if speed > SwipeRule.flickSpeed || dx > half {
+                            close(1)
                         } else {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                                 swipeOffset.wrappedValue = 0
@@ -426,9 +430,9 @@ struct ConversationScreen: View {
         }
     }
 
-    private func close() {
+    private func close(_ direction: CGFloat) {
         isComposing = false
-        onClose()
+        onClose(direction)
     }
 
     private func send() {

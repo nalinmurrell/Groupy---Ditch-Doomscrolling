@@ -6,7 +6,7 @@ struct ChatListScreen: View {
     @Binding var path: [Conversation.ID]
 
     @State private var isCreatingGroup = false
-    /// The open thread's swipe-to-close drag (negative = left).
+    /// The open thread's swipe-to-close drag (either way).
     @State private var threadOffset: CGFloat = 0
     @State private var pinError: String?
 
@@ -96,10 +96,11 @@ struct ChatListScreen: View {
         withAnimation(.easeOut(duration: 0.25)) { path = [id] }
     }
 
-    /// Slides the open thread out to the left, then drops it.
-    private func close() {
+    /// Slides the open thread out to the left (-1) or right (+1), then
+    /// drops it.
+    private func close(_ direction: CGFloat) {
         let width = UIScreen.main.bounds.width
-        withAnimation(.easeOut(duration: 0.2)) { threadOffset = -width }
+        withAnimation(.easeOut(duration: 0.2)) { threadOffset = direction * width }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             withoutAnimation {
                 path = []
