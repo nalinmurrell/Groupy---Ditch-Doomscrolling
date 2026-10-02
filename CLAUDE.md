@@ -212,6 +212,13 @@ The iPhone 16 Pro sim (D75C9E23…) is signed in as Probe — use it rather than
 typing credentials into a fresh one. Temporary `.task` drivers are still handy
 for states that are hard to reach by tapping.
 
+Threads (10-02): not pushed on a NavigationStack any more — ChatListScreen
+overlays the open thread (its own NavigationStack for the toolbar) and slides
+it in from / out to the LEFT, Snapchat-style. Swipe left anywhere in the
+thread drags it aside live (`swipeOffset`); past ~110pt or a fling closes it.
+The back button is our own "< Chat". `path` is still the binding RootView uses
+to hide the tab bar and stop paging, and that push-taps set.
+
 Tab pager: the panes are `.disabled` for ~0.35s around a sideways swipe so
 releasing over a row can't also tap it (that opened a chat mid-swipe, which
 turns paging off — looked like a stuck pager). `allowsHitTesting` does NOT

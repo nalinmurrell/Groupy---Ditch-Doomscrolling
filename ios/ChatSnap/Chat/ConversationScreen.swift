@@ -6,6 +6,13 @@ struct ConversationScreen: View {
     @EnvironmentObject private var session: SessionStore
     @EnvironmentObject private var camera: CameraController
     let conversationID: Conversation.ID
+    /// How far the swipe-to-close has dragged the thread (negative = left).
+    /// The chat list owns it so the whole layer, nav bar included, moves.
+    var swipeOffset: Binding<CGFloat> = .constant(0)
+    /// Closes the thread (the chat list slides it away to the left).
+    var onClose: () -> Void = {}
+    /// The current drag is sideways (decided on its first movement).
+    @State private var isSwipingSideways: Bool?
 
     @State private var draft = ""
     @State private var viewing: Message?
@@ -47,6 +54,15 @@ struct ConversationScreen: View {
         .navigationTitle(conversation?.title(for: session.userID) ?? "Chat")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button(action: close) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 17, weight: .semibold))
+                        Text("Chat")
+                    }
+                }
+            }
             // In a group the title is a button: tap for members.
             if let conversation, conversation.isGroup {
                 ToolbarItem(placement: .principal) {
@@ -66,7 +82,7 @@ struct ConversationScreen: View {
         }
         .sheet(isPresented: $isShowingMembers) {
             if let conversation {
-                GroupMembersSheet(conversation: conversation) { dismiss() }
+                GroupMembersSheet(conversation: conversation) { onClose() }
                     .presentationDetents([.medium, .large])
                     .preferredColorScheme(.dark)
             }
@@ -243,17 +259,33 @@ struct ConversationScreen: View {
                 .padding(.vertical, 14)
             }
             .defaultScrollAnchor(.bottom)
-            // Swipe left anywhere in the thread to close it. Mostly sideways
-            // only, so scrolling up and down never trips it; the composer is
-            // outside this view, so the voice-note slide-to-cancel can't either.
+            // Swipe left anywhere in the thread to close it: the thread
+            // follows the finger off to the left, revealing the chat list.
+            // Only a drag that starts out sideways counts, so scrolling never
+            // trips it; the composer is outside this view, so the voice-note
+            // slide-to-cancel can't either.
             .simultaneousGesture(
-                DragGesture(minimumDistance: 25)
-                    .onEnded { value in
+                DragGesture(minimumDistance: 20)
+                    .onChanged { value in
                         let dx = value.translation.width, dy = value.translation.height
-                        let flung = value.predictedEndTranslation.width < -220
-                        guard actionTarget == nil, abs(dx) > abs(dy) * 1.5, dx < -80 || flung else { return }
-                        isComposing = false
-                        dismiss()
+                        if isSwipingSideways == nil {
+                            isSwipingSideways = actionTarget == nil && abs(dx) > abs(dy) * 1.5 && dx < 0
+                        }
+                        guard isSwipingSideways == true else { return }
+                        swipeOffset.wrappedValue = min(0, dx)
+                    }
+                    .onEnded { value in
+                        defer { isSwipingSideways = nil }
+                        guard isSwipingSideways == true else { return }
+                        let far = value.translation.width < -110
+                        let flung = value.predictedEndTranslation.width < -260
+                        if far || flung {
+                            close()
+                        } else {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                swipeOffset.wrappedValue = 0
+                            }
+                        }
                     }
             )
             .onChange(of: thread.count) { _, _ in
@@ -390,6 +422,11 @@ struct ConversationScreen: View {
         Task {
             if !(await store.send(voiceNote: url, to: conversationID)) { voiceFailed = true }
         }
+    }
+
+    private func close() {
+        isComposing = false
+        onClose()
     }
 
     private func send() {

@@ -6,10 +6,12 @@ struct ChatListScreen: View {
     @Binding var path: [Conversation.ID]
 
     @State private var isCreatingGroup = false
+    /// The open thread's swipe-to-close drag (negative = left).
+    @State private var threadOffset: CGFloat = 0
     @State private var pinError: String?
 
     var body: some View {
-        NavigationStack(path: $path) {
+        NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 0) {
                     if store.conversations.isEmpty {
@@ -19,7 +21,7 @@ struct ChatListScreen: View {
                     }
 
                     ForEach(store.sortedConversations) { conversation in
-                        NavigationLink(value: conversation.id) {
+                        Button { open(conversation.id) } label: {
                             ChatRow(conversation: conversation, me: session.userID)
                         }
                         .buttonStyle(.quiet)
@@ -68,8 +70,40 @@ struct ChatListScreen: View {
                 NewGroupSheet { id in path = [id] }
                     .preferredColorScheme(.dark)
             }
-            .navigationDestination(for: Conversation.ID.self) { id in
-                ConversationScreen(conversationID: id)
+        }
+        // A thread sits over the list rather than being pushed, so it can
+        // come in from, and go back out to, the left — and a swipe can drag
+        // it aside to show the list underneath, like Snapchat.
+        .overlay {
+            if let id = path.last {
+                NavigationStack {
+                    ConversationScreen(
+                        conversationID: id,
+                        swipeOffset: $threadOffset,
+                        onClose: close
+                    )
+                }
+                .background(Color.black.ignoresSafeArea())
+                .offset(x: threadOffset)
+                .transition(.move(edge: .leading))
+                .id(id)
+            }
+        }
+    }
+
+    private func open(_ id: Conversation.ID) {
+        threadOffset = 0
+        withAnimation(.easeOut(duration: 0.25)) { path = [id] }
+    }
+
+    /// Slides the open thread out to the left, then drops it.
+    private func close() {
+        let width = UIScreen.main.bounds.width
+        withAnimation(.easeOut(duration: 0.2)) { threadOffset = -width }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            withoutAnimation {
+                path = []
+                threadOffset = 0
             }
         }
     }
