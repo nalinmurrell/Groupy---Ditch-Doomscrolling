@@ -121,7 +121,9 @@ rule: the file stays in storage and members can still fetch it — true
 ephemerality would need server-side deletion once everyone's opened it.
 
 Snap viewer (10-02, from Nalin's Snapchat screenshot): the snap sits in a
-rounded card (camera-shaped photos fill it; very different shapes fit) with
+rounded card (Groupy camera snaps, within 6% of its shape, fill it; anything
+else — screenshots, landscape picks — shows whole over a blurred copy, as
+Snapchat does) with
 the sender's avatar, name and "x ago" on top and a ⋯ menu (Save in Chat,
 Delete). Below: camera (snap reply into the chat), "Reply..." (sends a text,
 then closes) and download (saves to Photos, add-only permission). Tap the snap

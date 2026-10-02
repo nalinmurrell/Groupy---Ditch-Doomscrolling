@@ -1191,9 +1191,10 @@ private struct PhotoViewer: View {
     }
 }
 
-/// A photo in the viewer's card. Camera snaps are about the card's shape,
-/// so they fill it edge to edge like Snapchat; anything much wider or
-/// taller (a landscape camera-roll pick) is shown whole instead.
+/// A photo in the viewer's card, Snapchat's way. A Groupy camera snap is the
+/// card's shape near enough, so it fills edge to edge. Anything else (a
+/// screenshot, a landscape camera-roll pick) is shown whole, over a blurred,
+/// zoomed-in copy of itself so the card never has bare bars.
 private struct ViewerImage: View {
     @EnvironmentObject private var store: ChatStore
     let message: Message
@@ -1204,12 +1205,27 @@ private struct ViewerImage: View {
             if let image {
                 let card = geo.size.width / max(geo.size.height, 1)
                 let photo = image.size.width / max(image.size.height, 1)
-                let fills = abs(photo - card) / card < 0.2
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: fills ? .fill : .fit)
-                    .frame(width: geo.size.width, height: geo.size.height)
-                    .clipped()
+                if abs(photo - card) / card < 0.06 {
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .clipped()
+                } else {
+                    ZStack {
+                        Image(uiImage: image)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: geo.size.width, height: geo.size.height)
+                            .blur(radius: 30, opaque: true)
+                            .overlay(Color.black.opacity(0.15))
+                            .clipped()
+                        Image(uiImage: image)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: geo.size.width, height: geo.size.height)
+                    }
+                }
             } else {
                 ProgressView().tint(.white.opacity(0.5))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
