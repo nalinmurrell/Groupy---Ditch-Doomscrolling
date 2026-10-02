@@ -243,6 +243,19 @@ struct ConversationScreen: View {
                 .padding(.vertical, 14)
             }
             .defaultScrollAnchor(.bottom)
+            // Swipe left anywhere in the thread to close it. Mostly sideways
+            // only, so scrolling up and down never trips it; the composer is
+            // outside this view, so the voice-note slide-to-cancel can't either.
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 25)
+                    .onEnded { value in
+                        let dx = value.translation.width, dy = value.translation.height
+                        let flung = value.predictedEndTranslation.width < -220
+                        guard actionTarget == nil, abs(dx) > abs(dy) * 1.5, dx < -80 || flung else { return }
+                        isComposing = false
+                        dismiss()
+                    }
+            )
             .onChange(of: thread.count) { _, _ in
                 guard let last = thread.last else { return }
                 withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
