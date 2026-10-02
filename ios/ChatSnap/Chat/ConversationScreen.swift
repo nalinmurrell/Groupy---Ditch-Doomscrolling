@@ -283,9 +283,12 @@ struct ConversationScreen: View {
                         // a slow drag has to get past halfway.
                         let dx = value.translation.width, speed = value.velocity.width
                         let half = UIScreen.main.bounds.width / 2
-                        if speed < -SwipeRule.flickSpeed || dx < -half {
+                        // A flick only counts the way the drag went: a
+                        // finger lifting off often twitches back, and that
+                        // mustn't throw the thread out the other side.
+                        if dx < 0 && (speed < -SwipeRule.flickSpeed || dx < -half) {
                             close(-1)
-                        } else if speed > SwipeRule.flickSpeed || dx > half {
+                        } else if dx > 0 && (speed > SwipeRule.flickSpeed || dx > half) {
                             close(1)
                         } else {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {

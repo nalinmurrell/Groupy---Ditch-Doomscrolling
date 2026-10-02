@@ -92,8 +92,10 @@ struct Pager<Content: View>: View {
                 let dx = value.translation.width
                 let speed = value.velocity.width
                 var next = index
-                if speed < -SwipeRule.flickSpeed || dx < -width / 2 { next += 1 }
-                if speed >  SwipeRule.flickSpeed || dx >  width / 2 { next -= 1 }
+                // Only a flick the same way as the drag counts (lift-off
+                // twitches back the other way).
+                if dx < 0 && (speed < -SwipeRule.flickSpeed || dx < -width / 2) { next += 1 }
+                if dx > 0 && (speed >  SwipeRule.flickSpeed || dx >  width / 2) { next -= 1 }
                 next = max(0, min(count - 1, next))
 
                 withAnimation(snap) {
