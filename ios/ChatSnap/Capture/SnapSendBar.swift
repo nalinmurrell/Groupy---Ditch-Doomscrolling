@@ -13,8 +13,6 @@ struct SnapSendBar: View {
     let onSend: () -> Void
 
     @State private var isPicking = false
-    @State private var saveState: SaveState = .idle
-    private enum SaveState { case idle, saving, saved, failed }
 
     private var titles: [String] {
         recipients.compactMap { store.conversation($0)?.title(for: session.userID) }
@@ -26,7 +24,8 @@ struct SnapSendBar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            saveButton
+            SaveSnapButton(snap: snap)
+                .shadow(color: .black.opacity(0.4), radius: 3)
                 .padding(.leading, 22)
 
             HStack(spacing: 10) {
@@ -103,35 +102,46 @@ struct SnapSendBar: View {
             .preferredColorScheme(.dark)
         }
     }
+}
 
-    private var saveButton: some View {
+/// Saves the snap you've just taken to Photos; shows a tick once it has.
+/// `inPill`: the grey rounded button of the main camera's bottom bar.
+struct SaveSnapButton: View {
+    let snap: Snap
+    var inPill = false
+
+    @State private var state: SaveState = .idle
+    private enum SaveState { case idle, saving, saved, failed }
+
+    var body: some View {
         Button {
-            saveState = .saving
+            state = .saving
             Task {
                 let ok = await PhotoLibrarySaver.save(snap)
-                saveState = ok ? .saved : .failed
+                state = ok ? .saved : .failed
                 UINotificationFeedbackGenerator().notificationOccurred(ok ? .success : .error)
                 if !ok {
                     try? await Task.sleep(for: .seconds(1.5))
-                    saveState = .idle
+                    state = .idle
                 }
             }
         } label: {
             Group {
-                switch saveState {
+                switch state {
                 case .idle: Image(systemName: "arrow.down.to.line")
                 case .saving: ProgressView().tint(.white)
                 case .saved: Image(systemName: "checkmark")
                 case .failed: Image(systemName: "exclamationmark.triangle.fill")
                 }
             }
-            .font(.system(size: 24, weight: .semibold))
+            .font(.system(size: inPill ? 22 : 24, weight: .semibold))
             .foregroundStyle(.white)
-            .shadow(color: .black.opacity(0.4), radius: 3)
-            .frame(width: 44, height: 44)
+            .frame(width: inPill ? 76 : 44, height: inPill ? 52 : 44)
+            .background(inPill ? Color.white.opacity(0.16) : .clear, in: Capsule())
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .disabled(saveState == .saving || saveState == .saved)
+        .disabled(state == .saving || state == .saved)
         .accessibilityLabel("Save to Photos")
     }
 }
