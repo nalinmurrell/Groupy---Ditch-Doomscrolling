@@ -59,7 +59,7 @@ struct Pager<Content: View>: View {
     }
 
     private func swipe(width: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 12, coordinateSpace: .local)
+        DragGesture(minimumDistance: 12, coordinateSpace: .global)
             .updating($isDragging) { _, state, _ in state = true }
             .onChanged { value in
                 // Lock to whichever axis the finger commits to first, so a

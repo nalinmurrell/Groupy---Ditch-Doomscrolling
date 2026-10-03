@@ -257,13 +257,15 @@ struct ConversationScreen: View {
                 .padding(.vertical, 14)
             }
             .defaultScrollAnchor(.bottom)
+            // Global coordinates: the thread moves under the finger, and a
+            // local measurement would chase itself (the page jittered).
             // Swipe left or right anywhere in the thread to close it: the
             // thread follows the finger off that way, revealing the list.
             // Only a drag that starts out sideways counts, so scrolling never
             // trips it; the composer is outside this view, so the voice-note
             // slide-to-cancel can't either.
             .simultaneousGesture(
-                DragGesture(minimumDistance: 20)
+                DragGesture(minimumDistance: 20, coordinateSpace: .global)
                     .onChanged { value in
                         let dx = value.translation.width, dy = value.translation.height
                         if isSwipingSideways == nil {
@@ -1237,7 +1239,7 @@ private struct PhotoViewer: View {
     }
 
     private var swipeDown: some Gesture {
-        DragGesture(minimumDistance: 20)
+        DragGesture(minimumDistance: 20, coordinateSpace: .global)
             .onChanged { value in
                 dragOffset = max(0, value.translation.height)
             }
