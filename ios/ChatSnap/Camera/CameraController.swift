@@ -142,8 +142,6 @@ final class CameraController: NSObject, ObservableObject {
                 return
             }
             self.session.addOutput(self.photoOutput)
-            self.photoOutput.maxPhotoQualityPrioritization = .balanced
-            self.photoOutput.maxPhotoDimensions = Self.maxPhotoDimensions(for: device)
 
             if self.session.canAddOutput(self.movieOutput) {
                 self.session.addOutput(self.movieOutput)
@@ -160,6 +158,7 @@ final class CameraController: NSObject, ObservableObject {
             }
 
             self.session.commitConfiguration()
+            self.tunePhotoOutput(for: device)
             self.trackRotation(of: device)
             self.orientMovieConnection(mirrored: false)
             self.isConfigured = true
@@ -168,9 +167,23 @@ final class CameraController: NSObject, ObservableObject {
         }
     }
 
-    /// The biggest still the active (video) format can deliver.
-    private static func maxPhotoDimensions(for device: AVCaptureDevice) -> CMVideoDimensions {
-        device.activeFormat.supportedMaxPhotoDimensions.max { $0.width * $0.height < $1.width * $1.height }
+    /// Set up for a fast shutter, Snapchat-style: speed over extra processing,
+    /// no bigger than 12 MP (the 24/48 MP options are slow to capture and to
+    /// crop, and a snap is viewed on a phone), and Apple's zero-shutter-lag /
+    /// responsive capture where the camera supports them. Session queue.
+    private func tunePhotoOutput(for device: AVCaptureDevice) {
+        photoOutput.maxPhotoQualityPrioritization = .speed
+        photoOutput.maxPhotoDimensions = Self.photoDimensions(for: device)
+        if photoOutput.isZeroShutterLagSupported { photoOutput.isZeroShutterLagEnabled = true }
+        if photoOutput.isResponsiveCaptureSupported { photoOutput.isResponsiveCaptureEnabled = true }
+    }
+
+    /// The biggest still the active format offers, up to about 12 MP.
+    private static func photoDimensions(for device: AVCaptureDevice) -> CMVideoDimensions {
+        let options = device.activeFormat.supportedMaxPhotoDimensions
+        let cap: Int32 = 12_300_000
+        return options.filter { $0.width * $0.height <= cap }.max { $0.width * $0.height < $1.width * $1.height }
+            ?? options.min { $0.width * $0.height < $1.width * $1.height }
             ?? CMVideoDimensions(width: 1920, height: 1080)
     }
 
@@ -267,7 +280,7 @@ final class CameraController: NSObject, ObservableObject {
             if self.session.canAddInput(input) {
                 self.session.addInput(input)
                 self.videoInput = input
-                self.photoOutput.maxPhotoDimensions = Self.maxPhotoDimensions(for: device)
+                self.tunePhotoOutput(for: device)
             } else {
                 self.session.addInput(current)
             }
@@ -309,6 +322,7 @@ final class CameraController: NSObject, ObservableObject {
 
             let settings = AVCapturePhotoSettings()
             settings.maxPhotoDimensions = self.photoOutput.maxPhotoDimensions
+            settings.photoQualityPrioritization = .speed
             if self.photoOutput.supportedFlashModes.contains(flash) {
                 settings.flashMode = flash
             }
@@ -422,7 +436,7 @@ final class CameraController: NSObject, ObservableObject {
                 Task { @MainActor [weak self] in
                     guard let self else { return }
                     self.isRecording = false
-                    if let url = SimulatorFeed.clip() { self.snap = Snap(videoURL: url) }
+                    if let url = SimulatorFeed.clip() { withoutAnimation { self.snap = Snap(videoURL: url) } }
                 }
             } else {
                 endFile(discard: false)
@@ -460,7 +474,8 @@ final class CameraController: NSObject, ObservableObject {
 
     func discardSnap() {
         if let url = snap?.videoURL { try? FileManager.default.removeItem(at: url) }
-        snap = nil
+        // Gone at once, like Snapchat, not slid away.
+        withoutAnimation { snap = nil }
         // Like Snapchat: each new snap starts wide.
         setZoom(1)
     }
@@ -474,7 +489,7 @@ final class CameraController: NSObject, ObservableObject {
             let size = UIScreen.main.bounds.size
             self.isCapturing = false
             if let image = SimulatorFeed.still(size: size) {
-                self.snap = Snap(image: image)
+                withoutAnimation { self.snap = Snap(image: image) }
             }
         }
     }
@@ -483,6 +498,14 @@ final class CameraController: NSObject, ObservableObject {
 
     private func publish(_ mutate: @escaping (CameraController) -> Void) {
         DispatchQueue.main.async { mutate(self) }
+    }
+
+    /// For changes that put a snap up for review: no animation, so the review
+    /// appears the instant the photo's ready instead of sliding up as a sheet
+    /// (that slide was most of the shutter's felt delay — measured ~60ms to
+    /// the photo, then half a second of animation).
+    private func publishInstantly(_ mutate: @escaping (CameraController) -> Void) {
+        DispatchQueue.main.async { withoutAnimation { mutate(self) } }
     }
 }
 
@@ -512,7 +535,7 @@ extension CameraController: AVCaptureFileOutputRecordingDelegate {
             || (error as NSError?)?.userInfo[AVErrorRecordingSuccessfullyFinishedKey] as? Bool == true
         let discard = fileDiscard
         if discard || !usable { try? FileManager.default.removeItem(at: outputFileURL) }
-        publish {
+        publishInstantly {
             $0.isRecording = false
             if usable && !discard { $0.snap = Snap(videoURL: outputFileURL) }
         }
@@ -534,12 +557,13 @@ extension CameraController: AVCapturePhotoCaptureDelegate {
         let image = photo.fileDataRepresentation()
             .flatMap(UIImage.init(data:))
             .map { $0.centerCropped(toAspect: snapAspect) }
-        publish {
+        publishInstantly {
             $0.isCapturing = false
             if let image { $0.snap = Snap(image: image) }
         }
     }
 }
+
 
 extension UIImage {
     /// The centred slice of this image with the given width/height ratio,

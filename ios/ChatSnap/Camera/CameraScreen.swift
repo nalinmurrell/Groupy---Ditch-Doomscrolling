@@ -6,6 +6,8 @@ struct CameraScreen: View {
     @EnvironmentObject private var camera: CameraController
     @EnvironmentObject private var store: ChatStore
     @EnvironmentObject private var session: SessionStore
+    /// The snap on review, mirrored from the camera (see the cover below).
+    @State private var reviewing: Snap?
 
     var body: some View {
         ZStack {
@@ -38,10 +40,17 @@ struct CameraScreen: View {
                 }
             }
         }
+        // The review comes up at once, like Snapchat's — no sheet slide. A
+        // cover only skips its animation when its own @State changes inside
+        // a no-animation transaction, so mirror the controller's snap here.
         // While the in-thread camera is up, its snap isn't ours to show.
+        .onChange(of: camera.snap?.id) { _, _ in
+            let next = camera.captureTarget == nil ? camera.snap : nil
+            withoutAnimation { reviewing = next }
+        }
         .fullScreenCover(item: Binding(
-            get: { camera.captureTarget == nil ? camera.snap : nil },
-            set: { camera.snap = $0 }
+            get: { reviewing },
+            set: { if $0 == nil { camera.discardSnap() } }
         )) { snap in
             SnapReviewScreen(snap: snap)
                 .environmentObject(camera)

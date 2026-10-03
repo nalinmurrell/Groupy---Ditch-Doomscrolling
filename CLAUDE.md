@@ -98,6 +98,15 @@ gestures there were delivered ~0.77s late — measured, not guessed. Mic
 permission is requested on the first hold, not at launch. Review loops the clip;
 bubbles show a first-frame thumbnail with a play badge; the viewer loops it.
 Clips are cached in Caches/snaps.
+Shutter speed (10-02, measured on the 15 Pro): photo output tuned for speed
+(`.speed` prioritisation, ≤12 MP — this format only offers 1920×1080 and
+4224×2376 — zero-shutter-lag/responsive capture when supported; they weren't on
+the 15 Pro's 1080p format). Release → photo ready is ~60 ms (first shot after
+launch ~400 ms). The felt delay was the review's fullScreenCover sliding up
+(~0.5 s): CameraScreen now mirrors `camera.snap` into its own @State inside
+`withoutAnimation`, so the review appears in one frame — a cover only skips its
+slide when its own state changes in a no-animation transaction (wrapping the
+ObservableObject change wasn't enough; checked frame by frame on a recording).
 Viewfinder (09-30): `CameraCard` — a 9:16 card under the status bar, top
 corners rounded, ending at the tab bar (Snapchat's layout, not the full tall
 screen). Main camera, in-chat camera and review all use it; photos are
