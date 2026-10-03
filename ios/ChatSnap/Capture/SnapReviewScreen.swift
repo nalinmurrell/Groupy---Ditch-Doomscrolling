@@ -39,7 +39,7 @@ struct SnapReviewScreen: View {
             }
         }
         // Snapchat's bar in the strip under the snap: save, then a big
-        // yellow Send To. (Their Story button left out — no stories here.)
+        // white Send To. (Their Story button left out — no stories here.)
         .overlay(alignment: .bottom) {
             HStack(spacing: 12) {
                 SaveSnapButton(snap: snap, inPill: true)
@@ -57,7 +57,7 @@ struct SnapReviewScreen: View {
                     .foregroundStyle(.black)
                     .frame(maxWidth: .infinity)
                     .frame(height: 52)
-                    .background(Self.sendYellow, in: Capsule())
+                    .background(.white, in: Capsule())
                 }
                 .buttonStyle(.plain)
                 .disabled(isSending)
@@ -85,6 +85,4 @@ struct SnapReviewScreen: View {
             .preferredColorScheme(.dark)
         }
     }
-
-    static let sendYellow = Color(red: 1, green: 0.98, blue: 0)
 }

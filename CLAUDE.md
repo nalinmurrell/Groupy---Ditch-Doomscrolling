@@ -139,7 +139,7 @@ review screens — save-to-Photos button, "+ More Friends" (SendToSheet with
 `preselected`, `isChoosingOnly` → "Done"), a pill naming the recipients
 ("Gregory +1"), and the white send arrow. In-chat camera starts with that chat;
 that's the in-chat camera only. The main camera's review has Snapchat's
-other bar in the strip under the snap: a grey save pill and a big yellow
+other bar in the strip under the snap: a grey save pill and a big white
 "Send To ▶" (picker sends straight away). Their Story button is left out.
 
 Reactions (09-23): `message_reactions` (PK message+user, so one each; upsert
