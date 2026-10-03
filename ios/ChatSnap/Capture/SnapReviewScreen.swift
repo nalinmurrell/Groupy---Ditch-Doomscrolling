@@ -7,7 +7,8 @@ struct SnapReviewScreen: View {
     @EnvironmentObject private var session: SessionStore
     let snap: Snap
 
-    @State private var isPickingRecipients = false
+    /// Chosen with the picker; empty until then.
+    @State private var recipients: [Conversation.ID] = []
     @State private var isSending = false
 
     var body: some View {
@@ -35,31 +36,19 @@ struct SnapReviewScreen: View {
 
                         Spacer()
 
-                        HStack {
-                            Spacer()
-                            Button {
-                                isPickingRecipients = true
-                            } label: {
-                                HStack(spacing: 8) {
-                                    Text(isSending ? "Sending…" : "Send To")
-                                        .font(.system(size: 16, weight: .semibold))
-                                    if isSending {
-                                        ProgressView().tint(.black).controlSize(.small)
-                                    } else {
-                                        Image(systemName: "paperplane.fill")
-                                            .font(.system(size: 14, weight: .bold))
-                                    }
-                                }
-                                .foregroundStyle(.black)
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 14)
-                                .background(.white, in: Capsule())
+                        SnapSendBar(
+                            snap: snap,
+                            recipients: $recipients,
+                            isSending: isSending
+                        ) {
+                            isSending = true
+                            Task {
+                                await store.send(snap, to: recipients)
+                                // Back to the camera, the way Snapchat does
+                                // it — the snap is already in the thread.
+                                camera.discardSnap()
                             }
-                            .buttonStyle(.plain)
-                            .disabled(isSending)
                         }
-                        .padding(.horizontal, 24)
-                        .padding(.bottom, 28)
                     }
                 }
             }
@@ -67,21 +56,5 @@ struct SnapReviewScreen: View {
         // fullScreenCover presents outside RootView, so the status bar has to
         // be hidden again here or it collides with the close button.
         .statusBarHidden()
-        .sheet(isPresented: $isPickingRecipients) {
-            SendToSheet { conversationIDs in
-                isPickingRecipients = false
-                isSending = true
-                Task {
-                    await store.send(snap, to: conversationIDs)
-                    // Back to the camera, the way Snapchat does it — the snap
-                    // is already in the thread.
-                    camera.discardSnap()
-                }
-            }
-            .environmentObject(store)
-            .environmentObject(session)
-            .presentationDetents([.medium, .large])
-            .preferredColorScheme(.dark)
-        }
     }
 }

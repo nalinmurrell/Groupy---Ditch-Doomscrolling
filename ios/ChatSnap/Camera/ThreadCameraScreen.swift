@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The camera, opened from inside a thread: shoot, glance, send — the
-/// recipient is already decided, so there's no Send To step.
+/// The camera, opened from inside a thread: shoot, glance, send — it goes
+/// to this chat unless you add more friends.
 struct ThreadCameraScreen: View {
     @EnvironmentObject private var camera: CameraController
     @EnvironmentObject private var store: ChatStore
@@ -9,6 +9,8 @@ struct ThreadCameraScreen: View {
     let onClose: () -> Void
 
     @State private var isSending = false
+    /// This chat, plus anyone added with "+ More Friends".
+    @State private var recipients: [Conversation.ID] = []
     @State private var isShown = false
     /// The viewfinder follows a downward drag; far enough and it's dismissed.
     @State private var dragOffset: CGFloat = 0
@@ -26,6 +28,7 @@ struct ThreadCameraScreen: View {
             }
         }
         .statusBarHidden()
+        .onAppear { if recipients.isEmpty { recipients = [conversationID] } }
         // Presented without the system slide; a short fade instead.
         .opacity(isShown ? 1 : 0)
         .onAppear {
@@ -149,36 +152,18 @@ struct ThreadCameraScreen: View {
 
                         Spacer()
 
-                        HStack {
-                            Spacer()
-                            Button {
-                                isSending = true
-                                Task {
-                                    await store.send(snap, to: [conversationID])
-                                    camera.discardSnap()
-                                    close()
-                                }
-                            } label: {
-                                HStack(spacing: 8) {
-                                    Text(isSending ? "Sending…" : "Send")
-                                        .font(.system(size: 16, weight: .semibold))
-                                    if isSending {
-                                        ProgressView().tint(.black).controlSize(.small)
-                                    } else {
-                                        Image(systemName: "paperplane.fill")
-                                            .font(.system(size: 14, weight: .bold))
-                                    }
-                                }
-                                .foregroundStyle(.black)
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 14)
-                                .background(.white, in: Capsule())
+                        SnapSendBar(
+                            snap: snap,
+                            recipients: $recipients,
+                            isSending: isSending
+                        ) {
+                            isSending = true
+                            Task {
+                                await store.send(snap, to: recipients)
+                                camera.discardSnap()
+                                close()
                             }
-                            .buttonStyle(.plain)
-                            .disabled(isSending)
                         }
-                        .padding(.horizontal, 24)
-                        .padding(.bottom, 28)
                     }
                 }
             }

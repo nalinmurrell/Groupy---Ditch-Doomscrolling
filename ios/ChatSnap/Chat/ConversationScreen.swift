@@ -1321,6 +1321,28 @@ private struct ViewerImage: View {
 /// Saves a snap to the photo library. Add-only access: Groupy can put
 /// things in, never read them out.
 enum PhotoLibrarySaver {
+    /// A snap you've just taken, before it's sent.
+    @MainActor
+    static func save(_ snap: Snap) async -> Bool {
+        let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+        guard status == .authorized || status == .limited else { return false }
+        do {
+            switch snap.media {
+            case .photo(let image):
+                try await PHPhotoLibrary.shared().performChanges {
+                    PHAssetCreationRequest.creationRequestForAsset(from: image)
+                }
+            case .video(let url):
+                try await PHPhotoLibrary.shared().performChanges {
+                    PHAssetCreationRequest.creationRequestForAssetFromVideo(atFileURL: url)
+                }
+            }
+            return true
+        } catch {
+            return false
+        }
+    }
+
     @MainActor
     static func save(_ message: Message, from store: ChatStore) async -> Bool {
         let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)

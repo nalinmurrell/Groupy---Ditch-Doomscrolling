@@ -134,6 +134,12 @@ overlapping it. Only drawn when the snap is in the same loaded thread; note
 the thumbnail keeps an unsaved snap visible, as Snapchat's does. Test-cleanup tip: `supabase storage rm
 ss:///snaps/<path> --experimental --linked --yes` removes a file.
 
+Snap send bar (10-02, Snapchat's, minus filters): `SnapSendBar` on both
+review screens — save-to-Photos button, "+ More Friends" (SendToSheet with
+`preselected`, `isChoosingOnly` → "Done"), a pill naming the recipients
+("Gregory +1"), and the white send arrow. In-chat camera starts with that chat;
+the main camera starts empty ("Send To" opens the picker, arrow dimmed).
+
 Reactions (09-23): `message_reactions` (PK message+user, so one each; upsert
 replaces). Plain RLS writes — react as yourself, in chats you're in. On
 realtime; delete events carry only the PK. Long-press sheet has a bar of six

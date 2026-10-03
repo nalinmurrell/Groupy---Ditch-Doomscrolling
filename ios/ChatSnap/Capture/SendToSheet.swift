@@ -9,7 +9,18 @@ struct SendToSheet: View {
 
     let onSend: ([Conversation.ID]) -> Void
 
-    @State private var selected: Set<Conversation.ID> = []
+    @State private var selected: Set<Conversation.ID>
+
+    /// Picking who gets it, not sending: the button says "Done".
+    var isChoosingOnly = false
+
+    /// `preselected`: chats already ticked (the thread a snap was shot in).
+    init(preselected: Set<Conversation.ID> = [], isChoosingOnly: Bool = false,
+         onSend: @escaping ([Conversation.ID]) -> Void) {
+        self.onSend = onSend
+        self.isChoosingOnly = isChoosingOnly
+        _selected = State(initialValue: preselected)
+    }
 
     var body: some View {
         NavigationStack {
@@ -39,7 +50,7 @@ struct SendToSheet: View {
                 Button {
                     onSend(Array(selected))
                 } label: {
-                    Text(selected.isEmpty ? "Select someone" : "Send to \(selected.count)")
+                    Text(selected.isEmpty ? "Select someone" : isChoosingOnly ? "Done" : "Send to \(selected.count)")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(selected.isEmpty ? .white.opacity(0.4) : .black)
                         .frame(maxWidth: .infinity)
