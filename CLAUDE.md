@@ -104,6 +104,13 @@ photo — 1080×1920, ~10 ms after release on the 15 Pro. Flash on, or no fresh
 frame (just flipped), falls back to the photo output. The data output runs
 alongside the movie output fine on the 15 Pro (frames kept coming while
 recording; held videos finished OK) — measured, not assumed.
+Flip (10-03): the live-frame connection's rotation/mirroring is set *inside*
+the flip's begin/commitConfiguration (`orientFrameConnection`). Setting it
+after the commit restarted the pipeline and froze the new camera's exposure
+0.5–3 s (the "dark flip"); in-transaction it's correct within ~0.26 s,
+measured. A Snapchat-style blurred freeze over the flip was tried and removed
+at Nalin's request. Device logging tip: devicectl's console drops often —
+log to a file in Documents and `devicectl device copy from` it instead.
 Shutter speed (10-02, measured on the 15 Pro): photo output tuned for speed
 (`.speed` prioritisation, ≤12 MP — this format only offers 1920×1080 and
 4224×2376 — zero-shutter-lag/responsive capture when supported; they weren't on

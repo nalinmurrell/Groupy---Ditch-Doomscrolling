@@ -169,6 +169,7 @@ final class CameraController: NSObject, ObservableObject {
             if AVCaptureDevice.authorizationStatus(for: .audio) == .authorized {
                 self.attachMicrophone()
             }
+            self.orientFrameConnection(for: device)
 
             self.session.commitConfiguration()
             self.tunePhotoOutput(for: device)
@@ -232,14 +233,30 @@ final class CameraController: NSObject, ObservableObject {
         }
     }
 
-    /// Portrait, and mirrored for selfies so the clip matches the preview.
-    /// Done once per camera rather than at each record start, which would
-    /// add a reconfigure to the hold-to-record latency.
-    /// Upright and (for selfies) mirrored like the preview: the movie file,
-    /// and the live frames the shutter grabs.
+    /// The live frames, upright and mirrored like the preview, so a grabbed
+    /// frame is the photo as-is. Called only *inside* a configuration
+    /// transaction (setup, flip): changing this connection on a running
+    /// session after the commit restarted the pipeline and froze the new
+    /// camera's exposure for 0.5–3 s (measured) — the dark flip.
+    private func orientFrameConnection(for device: AVCaptureDevice) {
+        guard let connection = frameOutput.connection(with: .video) else { return }
+        let angle = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: previewLayer)
+            .videoRotationAngleForHorizonLevelPreview
+        if connection.isVideoRotationAngleSupported(angle) {
+            connection.videoRotationAngle = angle
+        }
+        if connection.isVideoMirroringSupported {
+            connection.automaticallyAdjustsVideoMirroring = false
+            connection.isVideoMirrored = device.position == .front
+        }
+    }
+
+    /// The movie file: portrait, and mirrored for selfies so the clip matches
+    /// the preview. Done once per camera rather than at each record start,
+    /// which would add a reconfigure to the hold-to-record latency.
     private func orientMovieConnection(mirrored: Bool) {
-        let angle = portraitAngle
-        for connection in [movieOutput.connection(with: .video), frameOutput.connection(with: .video)].compactMap({ $0 }) {
+        if let connection = movieOutput.connection(with: .video) {
+            let angle = portraitAngle
             if connection.isVideoRotationAngleSupported(angle) {
                 connection.videoRotationAngle = angle
             }
@@ -248,8 +265,6 @@ final class CameraController: NSObject, ObservableObject {
                 connection.isVideoMirrored = mirrored
             }
         }
-        // A frame from the old camera or angle mustn't become the next snap.
-        frameLock.withLock { latestFrame = nil }
     }
 
     /// The mic was allowed somewhere else (a voice note): give videos sound
@@ -302,6 +317,9 @@ final class CameraController: NSObject, ObservableObject {
             } else {
                 self.session.addInput(current)
             }
+            if let active = self.videoInput?.device { self.orientFrameConnection(for: active) }
+            // A frame from the old camera mustn't become the next snap.
+            self.frameLock.withLock { self.latestFrame = nil }
             self.session.commitConfiguration()
 
             let settled = self.videoInput?.device.position ?? .back
