@@ -14,3 +14,16 @@ struct QuietButtonStyle: ButtonStyle {
 extension ButtonStyle where Self == QuietButtonStyle {
     static var quiet: QuietButtonStyle { QuietButtonStyle() }
 }
+
+/// No press feedback and never greyed out. For rows inside a chat thread:
+/// the swipe lock disables them mid-swipe, and a press it cancels must not
+/// leave the row stuck dimmed (Snapchat's rows don't dim when pressed anyway).
+struct FlatButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.contentShape(Rectangle())
+    }
+}
+
+extension ButtonStyle where Self == FlatButtonStyle {
+    static var flat: FlatButtonStyle { FlatButtonStyle() }
+}

@@ -216,6 +216,10 @@ Threads (10-02): not pushed on a NavigationStack any more — ChatListScreen
 overlays the open thread (its own NavigationStack for the toolbar) and slides
 it in from / out to the LEFT, Snapchat-style. Swipe left or right anywhere
 in the thread drags it aside live (out the way you swiped) (`swipeOffset`); a quick flick (≥300pt/s, `SwipeRule.flickSpeed`) or a drag past halfway closes it; tabs use the same rule.
+From the moment a sideways swipe starts until 0.35s after it ends the
+thread's rows are `.disabled` (`isSwipeLocked`), so lifting off over a snap
+can't open it — same trick as the pager. Thread buttons use `.flat` (no press
+dim, never greyed) so a cancelled press can't leave a row stuck dimmed.
 The back button is a bare chevron, like Snapchat. iOS 26+ wraps toolbar items in a
 Liquid Glass bubble — `.sharedBackgroundVisibility(.hidden)` turns it off. The
 Probe simulator is iOS 18.5, so glass-only chrome must be checked on the phone

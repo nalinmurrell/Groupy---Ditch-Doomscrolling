@@ -265,7 +265,7 @@ struct VoiceNoteView: View {
                 }
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.flat)
 
             speedButton
 
@@ -310,7 +310,7 @@ struct VoiceNoteView: View {
                 .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.flat)
         .accessibilityLabel("Playback speed \(Self.rateLabel(player.rate))")
     }
 

@@ -13,6 +13,11 @@ struct ConversationScreen: View {
     var onClose: (_ direction: CGFloat) -> Void = { _ in }
     /// The current drag is sideways (decided on its first movement).
     @State private var isSwipingSideways: Bool?
+    /// The thread's rows don't take taps from the moment a sideways swipe
+    /// starts until just after it ends — Snapchat's rule: a touch that
+    /// became a swipe can't also open the snap it lifts off over.
+    /// `.disabled` (not allowsHitTesting) is what cancels a tap in flight.
+    @State private var isSwipeLocked = false
 
     @State private var draft = ""
     @State private var viewing: Message?
@@ -255,6 +260,7 @@ struct ConversationScreen: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
+                .disabled(isSwipeLocked)
             }
             .defaultScrollAnchor(.bottom)
             // Global coordinates: the thread moves under the finger, and a
@@ -272,10 +278,15 @@ struct ConversationScreen: View {
                             isSwipingSideways = actionTarget == nil && abs(dx) > abs(dy) * 1.5
                         }
                         guard isSwipingSideways == true else { return }
+                        isSwipeLocked = true
                         swipeOffset.wrappedValue = dx
                     }
                     .onEnded { value in
-                        defer { isSwipingSideways = nil }
+                        defer {
+                            isSwipingSideways = nil
+                            // Outlast the lift-off tap, then take taps again.
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { isSwipeLocked = false }
+                        }
                         guard isSwipingSideways == true else { return }
                         // Same rule as the tabs: a quick flick closes it,
                         // a slow drag has to get past halfway.
@@ -887,7 +898,9 @@ private struct MessageRow: View {
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
-        .buttonStyle(.plain)
+        // Flat: the swipe lock disables rows; .plain would grey them and
+        // a pressed look could stick.
+        .buttonStyle(.flat)
     }
 }
 
@@ -971,8 +984,8 @@ private struct SnapStatus: View {
             .chatCard()
             .contentShape(Rectangle())
         }
-        // Quiet: disabled (nothing to open) mustn't grey the card out.
-        .buttonStyle(.quiet)
+        // Flat: disabled (nothing to open) mustn't grey the card out.
+        .buttonStyle(.flat)
         .disabled(!canOpen)
     }
 
