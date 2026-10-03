@@ -49,6 +49,13 @@ final class CameraController: NSObject, ObservableObject {
     private let sessionQueue = DispatchQueue(label: "com.chatsnap.camera")
     private let photoOutput = AVCapturePhotoOutput()
     private let movieOutput = AVCaptureMovieFileOutput()
+    /// Snapchat's shutter: the live feed's newest frame *is* the photo, so a
+    /// tap has nothing to wait for. (The photo output is kept for flash.)
+    private let frameOutput = AVCaptureVideoDataOutput()
+    private let frameQueue = DispatchQueue(label: "com.chatsnap.camera.frames")
+    private let frameLock = NSLock()
+    private var latestFrame: (buffer: CVPixelBuffer, at: CFTimeInterval)?
+    private lazy var frameContext = CIContext(options: [.cacheIntermediates: false])
     private var audioInput: AVCaptureDeviceInput?
     /// Asks iOS which way is up for the active camera. Its angle replaces a
     /// hard-coded 90°, which was right for every older iPhone's sensors but
@@ -151,6 +158,12 @@ final class CameraController: NSObject, ObservableObject {
                     self.movieOutput.setOutputSettings([AVVideoCodecKey: AVVideoCodecType.h264], for: connection)
                 }
             }
+            if self.session.canAddOutput(self.frameOutput) {
+                self.frameOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+                self.frameOutput.alwaysDiscardsLateVideoFrames = true
+                self.frameOutput.setSampleBufferDelegate(self, queue: self.frameQueue)
+                self.session.addOutput(self.frameOutput)
+            }
             // Mic only if already allowed; otherwise it's asked for on the
             // first hold-to-record, not on launch.
             if AVCaptureDevice.authorizationStatus(for: .audio) == .authorized {
@@ -222,16 +235,21 @@ final class CameraController: NSObject, ObservableObject {
     /// Portrait, and mirrored for selfies so the clip matches the preview.
     /// Done once per camera rather than at each record start, which would
     /// add a reconfigure to the hold-to-record latency.
+    /// Upright and (for selfies) mirrored like the preview: the movie file,
+    /// and the live frames the shutter grabs.
     private func orientMovieConnection(mirrored: Bool) {
-        guard let connection = movieOutput.connection(with: .video) else { return }
         let angle = portraitAngle
-        if connection.isVideoRotationAngleSupported(angle) {
-            connection.videoRotationAngle = angle
+        for connection in [movieOutput.connection(with: .video), frameOutput.connection(with: .video)].compactMap({ $0 }) {
+            if connection.isVideoRotationAngleSupported(angle) {
+                connection.videoRotationAngle = angle
+            }
+            if connection.isVideoMirroringSupported {
+                connection.automaticallyAdjustsVideoMirroring = false
+                connection.isVideoMirrored = mirrored
+            }
         }
-        if connection.isVideoMirroringSupported {
-            connection.automaticallyAdjustsVideoMirroring = false
-            connection.isVideoMirrored = mirrored
-        }
+        // A frame from the old camera or angle mustn't become the next snap.
+        frameLock.withLock { latestFrame = nil }
     }
 
     /// The mic was allowed somewhere else (a voice note): give videos sound
@@ -317,6 +335,15 @@ final class CameraController: NSObject, ObservableObject {
         // What the viewfinder card shows; the photo gets cut to match.
         snapAspect = viewfinderAspect
 
+        // No flash: take the frame that's on screen right now, like Snapchat.
+        if flash == .off, let image = grabLiveFrame() {
+            publishInstantly {
+                $0.isCapturing = false
+                $0.snap = Snap(image: image)
+            }
+            return
+        }
+
         sessionQueue.async { [weak self] in
             guard let self else { return }
 
@@ -342,6 +369,17 @@ final class CameraController: NSObject, ObservableObject {
 
             self.photoOutput.capturePhoto(with: settings, delegate: self)
         }
+    }
+
+    /// The newest live frame as an upright photo cut to the viewfinder's
+    /// shape, or nil if there isn't a fresh one (the feed paused, the camera
+    /// just flipped) — the caller then takes a real photo instead.
+    private func grabLiveFrame() -> UIImage? {
+        guard let frame = frameLock.withLock({ latestFrame }),
+              CACurrentMediaTime() - frame.at < 0.25 else { return nil }
+        let image = CIImage(cvPixelBuffer: frame.buffer)
+        guard let cg = frameContext.createCGImage(image, from: image.extent) else { return nil }
+        return UIImage(cgImage: cg).centerCropped(toAspect: snapAspect)
     }
 
     // MARK: - Zoom
@@ -539,6 +577,19 @@ extension CameraController: AVCaptureFileOutputRecordingDelegate {
             $0.isRecording = false
             if usable && !discard { $0.snap = Snap(videoURL: outputFileURL) }
         }
+    }
+}
+
+// MARK: - Live frames
+
+extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
+    func captureOutput(
+        _ output: AVCaptureOutput,
+        didOutput sampleBuffer: CMSampleBuffer,
+        from connection: AVCaptureConnection
+    ) {
+        guard let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        frameLock.withLock { latestFrame = (buffer, CACurrentMediaTime()) }
     }
 }
 

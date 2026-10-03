@@ -98,6 +98,12 @@ gestures there were delivered ~0.77s late — measured, not guessed. Mic
 permission is requested on the first hold, not at launch. Review loops the clip;
 bubbles show a first-frame thumbnail with a play badge; the viewer loops it.
 Clips are cached in Caches/snaps.
+Live-frame shutter (10-02, Snapchat's trick): an AVCaptureVideoDataOutput keeps
+the newest frame; a tap with flash off turns that frame (≤0.25s old) into the
+photo — 1080×1920, ~10 ms after release on the 15 Pro. Flash on, or no fresh
+frame (just flipped), falls back to the photo output. The data output runs
+alongside the movie output fine on the 15 Pro (frames kept coming while
+recording; held videos finished OK) — measured, not assumed.
 Shutter speed (10-02, measured on the 15 Pro): photo output tuned for speed
 (`.speed` prioritisation, ≤12 MP — this format only offers 1920×1080 and
 4224×2376 — zero-shutter-lag/responsive capture when supported; they weren't on
